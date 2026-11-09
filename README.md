@@ -139,8 +139,9 @@ Regenerate a snapshot from a wow-ui-source checkout with
    client's flavour TOCs (`Loader.tocSuffixes`: `_Vanilla`, `-Vanilla`,
    `_Classic`, `-Classic`).
 
-5. In CI, cache `.wut` keyed on the pins, and give the fetch a token that can
-   read this (private) repository:
+5. In CI, cache `.wut` keyed on the pins. The library is public, so the fetch
+   needs no secret; the job's own token only spares GitHub's anonymous rate
+   limit:
 
    ```yaml
    - uses: actions/cache@v4
@@ -149,7 +150,7 @@ Regenerate a snapshot from a wow-ui-source checkout with
        key: wut-${{ hashFiles('.wut-version', 'wut.config.lua', 'tests/wut.config.lua') }}
    - run: bash scripts/fetch-wut.sh
      env:
-       GITHUB_TOKEN: ${{ secrets.WUT_TOKEN }}
+       GITHUB_TOKEN: ${{ github.token }}
    ```
 
 ## Client data

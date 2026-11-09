@@ -13,7 +13,8 @@
 # WUT_REPO     library repository (default: voshond/wow-ui-testing)
 # WUT_SOURCE   fetch the library from this local git repository instead
 # WUT_CONFIG   host config (default: wut.config.lua, then tests/wut.config.lua)
-# GITHUB_TOKEN / GH_TOKEN (or a logged-in gh) authenticate private downloads.
+# GITHUB_TOKEN / GH_TOKEN (or a logged-in gh) are used when set: they lift
+# GitHub's anonymous rate limit and reach private forks.
 set -euo pipefail
 cd "${1:-$PWD}"
 wut_dir="$PWD/.wut"
