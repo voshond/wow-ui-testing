@@ -101,6 +101,53 @@ describe("fetch-wut.sh", function()
 		assert.is_nil(Read(consumer .. "/.wut/addons/Panel/.wut-ref"))
 	end)
 
+	local function Leftovers()
+		local output = Shell("cd " .. Quote(consumer) .. " && for left in .wut.new* .wut.lock; do if [ -e \"$left\" ]; then echo \"$left\"; fi; done")
+		return output:gsub("exit=%d+%s*$", "")
+	end
+
+	it("lets cold fetches run at once and leaves one intact .wut", function()
+		local runs = 4
+		local output, code = Shell("cd " .. Quote(consumer) .. " && for i in $(seq " .. runs .. "); do (env -u WUT_DIR WUT_SOURCE="
+			.. Quote(lib) .. " bash " .. script .. " >" .. Quote(scratch) .. "/out$i 2>" .. Quote(scratch)
+			.. "/err$i; echo $? >" .. Quote(scratch) .. "/code$i) & done; wait")
+		assert.equals(0, code, output)
+		for i = 1, runs do
+			local log = (Read(scratch .. "/err" .. i) or "")
+			assert.equals("0\n", Read(scratch .. "/code" .. i), log)
+			assert.equals(consumer .. "/.wut\n", Read(scratch .. "/out" .. i), log)
+		end
+		assert.equals(libSha .. "\n", Read(consumer .. "/.wut/.wut-ref"))
+		assert.is_not_nil(Read(consumer .. "/.wut/wowtest/cli.lua"))
+		assert.equals(addonSha .. "\n", Read(consumer .. "/.wut/addons/Panel/.wut-ref"))
+		assert.is_not_nil(Read(consumer .. "/.wut/addons/Panel/Panel/Panel_Vanilla.toc"))
+		assert.equals("", Leftovers())
+	end)
+
+	it("takes over a lock whose fetch died", function()
+		os.execute("mkdir -p " .. Quote(consumer .. "/.wut.lock"))
+		local output = Shell("sh -c 'echo $$'")
+		Write(consumer .. "/.wut.lock/pid", output:match("^(%d+)") .. "\n")
+		local _, code = Fetch()
+		local stderr = Read(scratch .. "/stderr")
+		assert.equals(0, code, stderr)
+		assert.is_true(Has(stderr, "removing the stale lock"), stderr)
+		assert.equals(libSha .. "\n", Read(consumer .. "/.wut/.wut-ref"))
+		assert.equals("", Leftovers())
+	end)
+
+	it("gives up on a lock held by a live fetch", function()
+		os.execute("mkdir -p " .. Quote(consumer .. "/.wut.lock"))
+		local owner = Shell("sleep 30 >/dev/null 2>&1 & echo $!"):match("^(%d+)")
+		Write(consumer .. "/.wut.lock/pid", owner .. "\n")
+		local _, code = Fetch("WUT_LOCK_WAIT=1")
+		os.execute("kill " .. owner)
+		local stderr = Read(scratch .. "/stderr")
+		assert.equals(1, code, stderr)
+		assert.is_true(Has(stderr, "is still held after 1s"), stderr)
+		assert.is_nil(Read(consumer .. "/.wut/.wut-ref"))
+	end)
+
 	it("uses WUT_DIR instead of downloading the library", function()
 		Write(consumer .. "/.wut-version", ("0"):rep(40) .. "\n")
 		local output, code = Fetch("WUT_DIR=" .. Quote(lib))
