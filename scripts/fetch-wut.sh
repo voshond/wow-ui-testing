@@ -72,8 +72,15 @@ else
 	lib="$wut_dir"
 fi
 
+has_config() {
+	if [[ -n "${WUT_CONFIG:-}" ]]; then return 0; fi
+	[[ -f wut.config.lua || -f tests/wut.config.lua ]]
+}
+
 addons=""
-if [[ -f "$lib/wowtest/addons.lua" ]]; then
+if ! has_config; then
+	say "no wut.config.lua; skipping addons"
+elif [[ -f "$lib/wowtest/addons.lua" ]]; then
 	lua="$(command -v luajit || command -v lua5.1 || true)"
 	[[ -n "$lua" ]] || die "LuaJIT or Lua 5.1 is required to read wut.config.lua"
 	addons="$("$lua" "$lib/wowtest/addons.lua" ${WUT_CONFIG:+"$WUT_CONFIG"})" || die "cannot read the addons from wut.config.lua"

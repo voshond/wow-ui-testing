@@ -110,6 +110,22 @@ describe("fetch-wut.sh", function()
 		assert.equals(addonSha .. "\n", Read(consumer .. "/.wut/addons/Panel/.wut-ref"))
 	end)
 
+	it("needs no Lua when the repo has no wut.config.lua", function()
+		os.remove(consumer .. "/wut.config.lua")
+		local bin = scratch .. "/bin"
+		os.execute("mkdir -p " .. Quote(bin))
+		for _, name in ipairs({ "luajit", "lua5.1" }) do
+			Write(bin .. "/" .. name, "#!/bin/sh\necho called >&2\nexit 99\n")
+			os.execute("chmod +x " .. Quote(bin .. "/" .. name))
+		end
+		local output, code = Fetch("PATH=" .. Quote(bin) .. ":\"$PATH\"")
+		local stderr = Read(scratch .. "/stderr")
+		assert.equals(0, code, output .. stderr)
+		assert.is_true(Has(stderr, "no wut.config.lua; skipping addons"), stderr)
+		assert.is_false(Has(stderr, "called"), stderr)
+		assert.equals(libSha .. "\n", Read(consumer .. "/.wut/.wut-ref"))
+	end)
+
 	it("rejects a .wut-version without a full SHA", function()
 		Write(consumer .. "/.wut-version", "v0.1.0\n")
 		local _, code = Fetch()

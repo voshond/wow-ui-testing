@@ -96,15 +96,6 @@ API.PARENTS = {
 	FlipBook = "Animation",
 }
 
--- The client's own Lua additions: C functions and aliases the engine puts in
--- the global environment. Neither Blizzard's API documentation nor its Lua
--- source defines them, so the snapshot cannot list them.
-API.ENGINE_LUA = {}
-for name in ([[strbyte strchar strfind strlen strlower strmatch strrep strrev strsub strupper strsplit strjoin
-	strconcat tostringall tremove mod sqrt random hooksecurefunc securecall issecure PlaySound]]):gmatch("%S+") do
-	API.ENGINE_LUA[name] = true
-end
-
 local resolved = {}
 
 -- Switches the contract to another snapshot file (another client build).
@@ -157,9 +148,10 @@ function API.LuaGlobal(name)
 	return API.Snapshot().lua.globals[name]
 end
 
--- A client Lua addition the engine defines (API.ENGINE_LUA), or nil.
+-- A Lua VM addition the client's engine defines (strsplit, hooksecurefunc), or nil.
 function API.EngineLua(name)
-	return API.ENGINE_LUA[name]
+	local builtins = API.Snapshot().lua.builtins
+	return builtins and builtins[name]
 end
 
 -- Undocumented engine functions (name) and methods (":name") that Blizzard

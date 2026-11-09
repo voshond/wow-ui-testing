@@ -1,7 +1,8 @@
 --[[
 Generates a client API snapshot from a wow-ui-source checkout: the full
-documented client API (Blizzard_APIDocumentationGenerated), every mixin method
-Blizzard's Lua defines, and Blizzard's Lua evidence for what wowmock defines.
+documented client API (Blizzard_APIDocumentationGenerated), every global and
+mixin method Blizzard's Lua defines, the undocumented engine functions and
+methods it calls, and the client's Lua VM additions.
 
   luajit scripts/api-snapshot.lua [wow-ui-source dir] [output file]
 
@@ -125,30 +126,49 @@ for _, system in ipairs(systems) do
 end
 
 --[[
-Blizzard's Lua, three kinds of evidence that a name exists in the client:
-  globals  global and table fields Blizzard defines that the mock also defines
-           ("AuraUtil.GetAuraBorderColor")
-  methods  mixin methods (template methods such as SetBackdrop); one example owner
-  called   undocumented engine functions and methods that the mock defines and
-           Blizzard code calls (CreateFrame, IsInGroup, ...): existence only
+Blizzard's Lua, four kinds of evidence that a name exists in the client:
+  globals   global functions and variables, and fields of capitalised global
+            tables ("AuraUtil.GetAuraBorderColor"); mixin fields only when the
+            mock defines that mixin ("BackdropTemplateMixin.SetBackdrop")
+  methods   mixin methods (template methods such as SetBackdrop); one example owner
+  called    undocumented engine functions and methods Blizzard code calls
+            (GetQuestUiMapID, hooksecurefunc, :AddDoubleLine): existence only
+  builtins  the client's Lua VM additions (BUILTINS below)
 ]]
 local docsPrefix = sourceDir .. "/Interface/AddOns/Blizzard_APIDocumentation"
 local KEYWORDS = {}
 for word in ("and break do else elseif end false for function if in local nil not or repeat return then true"
 	.. " until while"):gmatch("%a+") do KEYWORDS[word] = true end
+
+-- Names a file binds itself (locals, loop variables, parameters): calling
+-- one is no evidence of client API.
+local function FileLocals(text)
+	local names = {}
+	local function Add(list)
+		for name in list:gmatch("[%a_][%w_]*") do names[name] = true end
+	end
+	for list in text:gmatch("local%s+function%s+([%w_]+)") do Add(list) end
+	for list in text:gmatch("local%s+([%w_,%s]-)%s*[=\n;]") do Add(list) end
+	for list in text:gmatch("for%s+([%w_,%s]-)%s+in[%s(]") do Add(list) end
+	for list in text:gmatch("for%s+([%w_]+)%s*=") do Add(list) end
+	for list in text:gmatch("function%s*[%w_.:]*%s*%(([^)]*)%)") do Add(list) end
+	return names
+end
+
 local calls = {}
 for _, path in ipairs(Lines("find '" .. sourceDir .. "/Interface' -name '*.lua' | LC_ALL=C sort")) do
 	if path:sub(1, #docsPrefix) ~= docsPrefix then
 		local relative = path:sub(#sourceDir + 2)
-		for line in Read(path):gmatch("[^\n]+") do
+		local text = Read(path):gsub("%-%-%[(=*)%[.-%]%1%]", "")
+		local locals = FileLocals(text)
+		for line in text:gmatch("[^\n]+") do
 			local name = line:match("^function%s+([%w_]+)%s*%(") or line:match("^([%w_]+)%s*=[^=]")
 			local owner, key = line:match("^%s*function%s+([%w_]+)%.([%w_]+)%s*%(")
 			if not owner then owner, key = line:match("^%s*([%w_]+)%.([%w_]+)%s*=[^=]") end
 			local mixin, method = line:match("^%s*function%s+([%w_]+):([%w_]+)%s*%(")
-			-- Globals only matter for what the mock defines; global tables are capitalised.
-			if name and mockWords[name] then
+			if name and not KEYWORDS[name] then
 				snapshot.lua.globals[name] = snapshot.lua.globals[name] or relative
-			elseif owner and owner:match("^[A-Z]") and mockWords[owner] and mockWords[key] then
+			elseif owner and owner:match("^[A-Z]") and not locals[owner] then
 				local full = owner .. "." .. key
 				snapshot.lua.globals[full] = snapshot.lua.globals[full] or relative
 			elseif mixin then
@@ -160,15 +180,17 @@ for _, path in ipairs(Lines("find '" .. sourceDir .. "/Interface' -name '*.lua' 
 					snapshot.lua.globals[full] = snapshot.lua.globals[full] or relative
 				end
 			end
-			if not line:match("^%s*%-%-") then
-				for call in (" " .. line):gmatch("[^%w_.:]([%w_]+)%s*%(") do
+			-- Calls in code only: strings and comments mention words followed by "(".
+			local code = line:gsub('"[^"]*"', '""'):gsub("'[^']*'", "''"):gsub("%-%-.*$", "")
+			if code:match("%S") then
+				for call in (" " .. code):gmatch("[^%w_.:]([%w_]+)%s*%(") do
 					-- Lua's own globals are not client API.
-					if mockWords[call] and not KEYWORDS[call] and _G[call] == nil then
+					if not KEYWORDS[call] and not locals[call] and _G[call] == nil then
 						calls[call] = calls[call] or relative
 					end
 				end
-				for call in line:gmatch(":([%w_]+)%s*%(") do
-					if mockWords[call] then calls[":" .. call] = calls[":" .. call] or relative end
+				for call in code:gmatch(":([%w_]+)%s*%(") do
+					calls[":" .. call] = calls[":" .. call] or relative
 				end
 			end
 		end
@@ -182,6 +204,22 @@ for name, relative in pairs(calls) do
 		snapshot.lua.called[name] = relative
 	end
 end
+
+-- The client's Lua VM additions: globals its C side defines (library
+-- aliases and WoW's own Lua functions, warcraft.wiki.gg/wiki/Lua_functions).
+-- No Lua file defines them and some no Blizzard file calls.
+local BUILTINS = [[
+	abs acos asin atan atan2 ceil cos deg exp floor frexp ldexp log log10 max min mod rad random fastrandom sin sqrt tan
+	format gmatch gsub strbyte strchar strcmputf8i strconcat strfind strjoin strlen strlenutf8 strlower strmatch strrep
+	strrev strsplit strsplittable strsub strtrim strupper tostringall
+	foreach foreachi getn sort tinsert tremove wipe
+	date time difftime
+	hooksecurefunc securecall securecallfunction secureexecuterange issecure issecurevariable forceinsecure
+	seterrorhandler geterrorhandler debugstack debuglocals getprinthandler setprinthandler
+]]
+snapshot.lua.builtins = {}
+for name in BUILTINS:gmatch("%S+") do snapshot.lua.builtins[name] = true end
+for name in pairs(snapshot.lua.builtins) do snapshot.lua.called[name] = nil end
 
 -- Filter components aura containers accept (AuraUtil.IsValidFilterString).
 snapshot.lua.auraFilters = {}
