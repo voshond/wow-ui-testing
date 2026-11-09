@@ -87,6 +87,21 @@ describe("wowproof layout", function()
 		assert.same({ 0, 0, 22, 10 }, Rect(text))
 	end)
 
+	it("gives edge anchors precedence over another anchor's centre, per axis", function()
+		local frame = scene.Node("Frame", scene.screen, { width = 200, height = 100, points = { { point = "TOPLEFT" } } })
+		local line = scene.Node("Frame", frame, {
+			height = 20,
+			points = {
+				{ point = "LEFT", x = 5 },
+				{ point = "RIGHT", x = -5 },
+				{ point = "TOP", y = -10 },
+			},
+		})
+		assert.same({ 5, 10, 190, 20 }, Rect(line))
+		local centred = scene.Node("Frame", frame, { width = 40, height = 20, points = { { point = "LEFT" } } })
+		assert.same({ 0, 40, 40, 20 }, Rect(centred))
+	end)
+
 	it("rejects unknown anchor points", function()
 		local frame = scene.Node("Frame", scene.screen, { width = 1, height = 1, points = { { point = "MIDDLE" } } })
 		assert.has_error(function() layout:Rect(frame) end)

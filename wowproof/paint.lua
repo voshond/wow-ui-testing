@@ -314,6 +314,13 @@ end
 function Context:DrawTexture(region, rect, alpha)
 	local texture = self.adapter.Texture(region)
 	if not texture then return end
+	-- Like the client, an empty file path draws nothing (Titan's bar backdrop).
+	if texture.file == "" then
+		local copy = {}
+		for key, value in pairs(texture) do copy[key] = value end
+		copy.file = nil
+		texture = copy
+	end
 	local blend = texture.blend == "ADD" and ' style="mix-blend-mode:screen"' or ""
 	if texture.gradient then
 		local from, to = texture.gradient.from, texture.gradient.to
@@ -471,8 +478,9 @@ function Context:DrawText(region, rect, alpha)
 	for _, segment in ipairs(Segments(tostring(text.text), text.color or DEFAULT_TEXT_COLOR)) do
 		spans[#spans + 1] = string.format('<tspan %s>%s</tspan>', Fill(segment[2], alpha), Escape(segment[1]))
 	end
+	-- xml:space keeps the spaces at colour-run edges ("Thrall |r|cff..Guild Master").
 	self:Emit(string.format(
-		'<text x="%s" y="%s" font-family="%s" font-weight="%d" font-size="%s" text-anchor="%s" dominant-baseline="central"%s>%s</text>',
+		'<text xml:space="preserve" x="%s" y="%s" font-family="%s" font-weight="%d" font-size="%s" text-anchor="%s" dominant-baseline="central"%s>%s</text>',
 		Number(x), Number(y), Escape(family or "sans-serif"), weight or 400, Number(size),
 		ANCHORS[justify] or "middle", stroke, table.concat(spans)))
 end

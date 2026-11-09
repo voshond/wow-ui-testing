@@ -51,6 +51,9 @@ local Methods = {}
 local ObjectMT = {}
 Mock.Methods = Methods
 
+-- Regions that draw inside a frame and have no frame level of their own.
+local REGION_TYPES = { Texture = true, Line = true, FontString = true, MaskTexture = true }
+
 local registry -- all created objects, reset per Mock.Install()
 
 local function NewObject(objectType, parent, name)
@@ -299,6 +302,11 @@ function Methods:SetParent(parent)
 		parent.__state.kids[self] = true
 	end
 	self.__state.parent = parent
+	-- Like the client, a reparented frame moves to its new parent's level + 1.
+	local level = parent and rawget(parent, "__state") and parent.__state.level
+	if level and not self.__state.fixedLevel and not REGION_TYPES[self.__type] then
+		Methods.SetFrameLevel(self, level + 1)
+	end
 end
 function Methods:GetParent() return self.__state.parent end
 
@@ -679,7 +687,25 @@ function Methods:SetFormattedText(fmt, ...)
 end
 function Methods:GetText() return self.__state.text end
 function Methods:SetTextColor(r, g, b, a) self.__state.textColor = { r, g, b, a } end
-function Methods:GetStringWidth() return 50 end
+-- Text width estimate: visible characters (colour codes dropped, an inline
+-- texture as two) times the font size times 0.62, a little wider than the
+-- sans-serif wowproof renders. Secret text keeps the old fixed 50.
+local function FontSize(region)
+	local font = region.__state.font
+	if font and font[2] then return font[2] end
+	local object = region.__state.fontObject
+	if type(object) == "string" then object = rawget(_G, object) end
+	local objectFont = type(object) == "table" and rawget(object, "__state") and object.__state.font
+	return objectFont and objectFont[2] or 12
+end
+function Methods:GetStringWidth()
+	local text = self.__state.text
+	if text == nil then return 0 end
+	if type(text) == "number" then text = tostring(text) end
+	if type(text) ~= "string" then return 50 end
+	local plain = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "WW")
+	return #plain * FontSize(self) * 0.62
+end
 
 -- Backdrop (BackdropTemplate)
 local borderPieces = { "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
@@ -795,6 +821,31 @@ function Methods:SetCooldown(start, duration) self.__state.cooldown = { start = 
 function Methods:Pause() self.__state.paused = true end
 
 -- Slider
+-- ScrollFrame: the client lays the scroll child out at the frame's top left,
+-- moved up by the vertical scroll and left by the horizontal one.
+local function PlaceScrollChild(frame)
+	local child = frame.__state.scrollChild
+	if not child then return end
+	child.__state.points = { { "TOPLEFT", frame, "TOPLEFT",
+		-(frame.__state.horizontalScroll or 0), frame.__state.verticalScroll or 0 } }
+end
+function Methods:SetScrollChild(child)
+	self.__state.scrollChild = child
+	Methods.SetParent(child, self)
+	PlaceScrollChild(self)
+end
+function Methods:GetScrollChild() return self.__state.scrollChild end
+function Methods:SetVerticalScroll(offset)
+	self.__state.verticalScroll = offset
+	PlaceScrollChild(self)
+end
+function Methods:GetVerticalScroll() return self.__state.verticalScroll or 0 end
+function Methods:SetHorizontalScroll(offset)
+	self.__state.horizontalScroll = offset
+	PlaceScrollChild(self)
+end
+function Methods:GetHorizontalScroll() return self.__state.horizontalScroll or 0 end
+
 function Methods:GetThumbTexture()
 	if not self.__state.thumb then
 		self.__state.thumb = NewObject("Texture", self)
@@ -1059,6 +1110,8 @@ Mock.UI_COLORS = {
 	{ "LIGHTYELLOW_FONT_COLOR", 255, 255, 154 },
 	{ "ORANGE_FONT_COLOR", 255, 127, 63 },
 	{ "WHITE_FONT_COLOR", 255, 255, 255 },
+	{ "TOOLTIP_DEFAULT_COLOR", 255, 255, 255 },
+	{ "TOOLTIP_DEFAULT_BACKGROUND_COLOR", 23, 23, 48 },
 }
 
 -- Global aliases of the Lua libraries: Blizzard_SharedXMLBase/Compat.lua's
@@ -2048,6 +2101,7 @@ function Mock.Install()
 	end
 	_G.C_CVar = { SetCVar = function() return true end }
 	InstallClientGlobals()
+	require("wowmock.templates")()
 	RunExtensions("install")
 	Mock.EnforceAPI()
 end
