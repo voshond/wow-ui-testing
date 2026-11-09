@@ -1,0 +1,10 @@
+describe("beta", function()
+	it("sees the setup and the host path #slow", function()
+		assert.equals("ran", FIXTURE_SETUP)
+		assert.equals(42, require("fixture_module").answer)
+	end)
+
+	it("fails on purpose #broken", function()
+		assert.equals(1, 2)
+	end)
+end)

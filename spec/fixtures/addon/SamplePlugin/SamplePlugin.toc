@@ -1,0 +1,5 @@
+## Interface: 11508
+## Title: Sample Plugin
+## Dependencies: Panel
+
+Plugin.lua

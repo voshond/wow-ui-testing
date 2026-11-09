@@ -1,0 +1,35 @@
+local Filter = require("wowtest.filter")
+
+describe("wowtest filters", function()
+	it("selects every spec without path filters", function()
+		assert.is_true(Filter.SpecSelected("units/player_spec.lua", {}))
+	end)
+
+	it("matches a folder filter only at the start", function()
+		assert.is_true(Filter.SpecSelected("units/player_spec.lua", { "units/" }))
+		assert.is_false(Filter.SpecSelected("auras/units/x_spec.lua", { "units/" }))
+	end)
+
+	it("matches a file filter by full key or basename", function()
+		assert.is_true(Filter.SpecSelected("units/player_spec.lua", { "player_spec.lua" }))
+		assert.is_true(Filter.SpecSelected("units/player_spec.lua", { "units/player_spec.lua" }))
+		assert.is_false(Filter.SpecSelected("units/player_spec.lua", { "layer_spec.lua" }))
+	end)
+
+	it("matches a bare filter anywhere and combines filters with or", function()
+		assert.is_true(Filter.SpecSelected("wowproof/paint_spec.lua", { "nothing", "proof" }))
+		assert.is_false(Filter.SpecSelected("wowproof/paint_spec.lua", { "nothing" }))
+	end)
+
+	it("needs every name filter to match", function()
+		assert.is_true(Filter.TestSelected("bar shows full health", { "full", "bar" }, {}))
+		assert.is_false(Filter.TestSelected("bar shows full health", { "full", "mana" }, {}))
+	end)
+
+	it("needs one wanted tag in the full name", function()
+		assert.is_true(Filter.TestSelected("shields #shields absorbs", {}, { "shields" }))
+		assert.is_true(Filter.TestSelected("x #a-b", {}, { "nope", "a-b" }))
+		assert.is_false(Filter.TestSelected("shields absorbs", {}, { "shields" }))
+		assert.is_false(Filter.TestSelected("#shields absorbs", { "mana" }, { "shields" }))
+	end)
+end)

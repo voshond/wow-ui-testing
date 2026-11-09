@@ -1,0 +1,4 @@
+## Interface: 110200
+## Title: Panel (retail)
+
+WrongFlavour.lua
