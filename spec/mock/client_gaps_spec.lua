@@ -285,3 +285,74 @@ describe("wowmock gaps from Socialite's proof", function()
 		assert.same({ 1, 0, 0, 1 }, { frame:GetBackdropBorderColor() })
 	end)
 end)
+
+describe("wowmock gaps Socialite still stubbed after v0.1.1", function()
+	before_each(function()
+		Mock.ClearExtensions()
+		Mock.Install()
+	end)
+
+	it("reads nil for methods a modelled widget lacks, like the client", function()
+		local scroll = CreateFrame("ScrollFrame", nil, UIParent)
+		assert.is_nil(scroll.StripTextures)
+		assert.is_nil(scroll.CreateBackdrop)
+		assert.is_nil(scroll.SetBackdrop)
+		assert.equals("function", type(scroll.SetScrollChild))
+		assert.equals("function", type(scroll.GetAnchor))
+		local templated = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+		assert.equals("function", type(templated.SetBackdrop))
+		assert.equals("function", type(Mock.NewObject("Unmodelled").StripTextures))
+	end)
+
+	it("defines TooltipBackdropTemplateMixin and builds the template from it", function()
+		assert.equals("table", type(TooltipBackdropTemplateMixin))
+		for _, key in ipairs({ "TooltipBackdropOnLoad", "SetBackdropColor", "GetBackdropColor", "SetBackdropBorderColor",
+			"GetBackdropBorderColor" }) do
+			assert.equals("function", type(TooltipBackdropTemplateMixin[key]), key)
+		end
+		local frame = CreateFrame("Frame", nil, UIParent, TooltipBackdropTemplateMixin and "TooltipBackdropTemplate")
+		assert.equals(TooltipBackdropTemplateMixin.SetBackdropColor, frame.SetBackdropColor)
+		frame:SetBackdropColor(0, 0, 0, 0.5)
+		assert.same({ 0, 0, 0, 0.5 }, { frame:GetBackdropColor() })
+	end)
+
+	it("installs GameTooltip, its fonts and the class tables without InstallUI", function()
+		assert.equals(GameTooltip, _G.GameTooltip)
+		assert.is_true(GameTooltip:IsObjectType("GameTooltip"))
+		assert.equals(UIParent, GameTooltip:GetParent())
+		assert.equals("GameTooltip", GameTooltip:GetName())
+		assert.equals(12, select(2, GameTooltipText:GetFont()))
+		assert.equals(14, select(2, GameTooltipHeaderText:GetFont()))
+		assert.equals("ffc69b6d", RAID_CLASS_COLORS.WARRIOR.colorStr)
+		assert.equals("ffffffff", RAID_CLASS_COLORS.PRIEST.colorStr)
+		assert.equals("|cff3fc7ebJaina|r", RAID_CLASS_COLORS.MAGE:WrapTextInColorCode("Jaina"))
+		assert.equals("Priest", LOCALIZED_CLASS_NAMES_MALE.PRIEST)
+		assert.equals("Priest", LOCALIZED_CLASS_NAMES_FEMALE.PRIEST)
+		for classID = 1, 11 do
+			local info = C_CreatureInfo.GetClassInfo(classID)
+			if info then
+				assert.is_not_nil(RAID_CLASS_COLORS[info.classFile], info.classFile)
+				assert.equals(info.className, LOCALIZED_CLASS_NAMES_MALE[info.classFile])
+			end
+		end
+	end)
+
+	it("defines ChatEdit_InsertLink for AceGUI's hooksecurefunc", function()
+		local hooked
+		hooksecurefunc("ChatEdit_InsertLink", function(text) hooked = text end)
+		assert.is_false(ChatEdit_InsertLink("|Hitem:19019|h[Thunderfury]|h"))
+		assert.equals("|Hitem:19019|h[Thunderfury]|h", hooked)
+		assert.has_error(function() hooksecurefunc("GapsNoSuchFunction", function() end) end)
+	end)
+
+	it("answers the XP and pet battle calls Titan's setup makes", function()
+		assert.same({ 1200, 5000 }, { UnitXP("player"), UnitXPMax("player") })
+		Mock.xp, Mock.xpMax = 0, 1000
+		assert.same({ 0, 1000 }, { UnitXP("player"), UnitXPMax("player") })
+		assert.has_error(function() UnitXP() end)
+		assert.is_false(IsResting())
+		assert.is_false(C_PetBattles.IsInBattle())
+		Mock.inPetBattle = true
+		assert.is_true(C_PetBattles.IsInBattle())
+	end)
+end)

@@ -176,18 +176,31 @@ local function Wrapped(key)
 	return wrapper
 end
 
+-- Whether a modelled object has the method `key`, as the client answers a
+-- read: documented for its type, or a Lua mixin method its template brings.
+-- Unmodelled mock objects have every method.
+local function HasMethod(obj, key)
+	if Mock.HELPERS[key] then return true end
+	local objectType = rawget(obj, "__type")
+	local def, modelled = API.Method(objectType, key)
+	if def or not modelled then return true end
+	local templated = (rawget(obj, "__state") or {}).template or INTRINSIC_MIXINS[objectType]
+	return templated and API.LuaMethod(key) ~= nil
+end
+
 ObjectMT.__index = function(obj, key)
-	if Methods[key] then
-		return Wrapped(key)
+	if type(key) ~= "string" then return nil end
+	if not Methods[key] then
+		-- Strict objects behave like real frames for unknown keys (nil), for code
+		-- that probes optional fields like frame.Health.
+		if rawget(obj, "__strict") then return nil end
+		-- Widget methods are PascalCase; lowercase keys are addon fields
+		-- (frame.anchor, a heal prediction calculator's values), nil until set.
+		if key:find("^%l") then return nil end
 	end
-	-- Strict objects behave like real frames for unknown keys (nil), for code
-	-- that probes optional fields like frame.Health.
-	if rawget(obj, "__strict") then
-		return nil
-	end
-	-- Widget methods are PascalCase; lowercase keys are addon fields
-	-- (frame.anchor, a heal prediction calculator's values), nil until set.
-	if type(key) ~= "string" or key:find("^%l") then return nil end
+	-- Probes for methods other addons add (ElvUI's frame.StripTextures) or a
+	-- template's (frame.SetBackdrop) read nil, as in the client.
+	if not HasMethod(obj, key) then return nil end
 	return Wrapped(key)
 end
 
@@ -1430,12 +1443,20 @@ Mock.GLOBAL_STRINGS = {
 	SHORT = "Short", SHOW = "Show", UKNOWNBEING = "Unknown Being", USE = "Use", YES = "Yes",
 }
 
--- C_CreatureInfo.GetClassInfo by classID.
+-- C_CreatureInfo.GetClassInfo by classID, with the client's class colour as
+-- RRGGBB (C_ClassColor's DB values behind RAID_CLASS_COLORS).
 local CLASSES = {
-	[1] = { "Warrior", "WARRIOR" }, [2] = { "Paladin", "PALADIN" }, [3] = { "Hunter", "HUNTER" },
-	[4] = { "Rogue", "ROGUE" }, [5] = { "Priest", "PRIEST" }, [7] = { "Shaman", "SHAMAN" },
-	[8] = { "Mage", "MAGE" }, [9] = { "Warlock", "WARLOCK" }, [11] = { "Druid", "DRUID" },
+	[1] = { "Warrior", "WARRIOR", "c69b6d" }, [2] = { "Paladin", "PALADIN", "f48cba" },
+	[3] = { "Hunter", "HUNTER", "aad372" }, [4] = { "Rogue", "ROGUE", "fff468" },
+	[5] = { "Priest", "PRIEST", "ffffff" }, [7] = { "Shaman", "SHAMAN", "0070dd" },
+	[8] = { "Mage", "MAGE", "3fc7eb" }, [9] = { "Warlock", "WARLOCK", "8788ee" },
+	[11] = { "Druid", "DRUID", "ff7c0a" },
 }
+
+local function HexColor(hex)
+	local function Channel(index) return tonumber(hex:sub(index, index + 1), 16) / 255 end
+	return NewColor(Channel(1), Channel(3), Channel(5))
+end
 
 -- Client globals nearly every addon (and Titan Panel) reads: the logged-in
 -- player, money and zone, screen size, chat, popups, the classic dropdown
@@ -1468,8 +1489,25 @@ local function InstallClientGlobals()
 			if class then return { className = class[1], classFile = class[2], classID = classID } end
 		end,
 	}
+	-- Blizzard_SharedXML/ClassColors.lua and Blizzard_FrameXMLBase/Constants.lua.
+	_G.RAID_CLASS_COLORS, _G.LOCALIZED_CLASS_NAMES_MALE, _G.LOCALIZED_CLASS_NAMES_FEMALE = {}, {}, {}
+	for _, class in pairs(CLASSES) do
+		local color = HexColor(class[3])
+		color.colorStr = color:GenerateHexColor()
+		RAID_CLASS_COLORS[class[2]] = color
+		LOCALIZED_CLASS_NAMES_MALE[class[2]] = class[1]
+		LOCALIZED_CLASS_NAMES_FEMALE[class[2]] = class[1]
+	end
 	Mock.level, Mock.money, Mock.zone, Mock.subZone = 60, 0, "Stormwind City", ""
 	_G.UnitLevel = function() return Mock.level end
+	-- Mock.xp / Mock.xpMax, Mock.resting and Mock.inPetBattle drive the
+	-- experience and pet battle answers (Titan's XP and bar setup reads them).
+	Mock.xp, Mock.xpMax, Mock.resting, Mock.inPetBattle = 1200, 5000, false, false
+	_G.UnitXP = function() return Mock.xp end
+	_G.UnitXPMax = function() return Mock.xpMax end
+	_G.IsResting = function() return Mock.resting end
+	_G.GetXPExhaustion = function() return nil end
+	_G.C_PetBattles = { IsInBattle = function() return Mock.inPetBattle end }
 	_G.GetMoney = function() return Mock.money end
 	_G.GetZoneText = function() return Mock.zone end
 	_G.GetSubZoneText = function() return Mock.subZone end
@@ -1482,7 +1520,12 @@ local function InstallClientGlobals()
 	_G.StaticPopupDialogs = {}
 	_G.ChatFrame1 = NewObject("ScrollingMessageFrame", UIParent, "ChatFrame1")
 	_G.DEFAULT_CHAT_FRAME = ChatFrame1
-	_G.ChatFrameUtil = { DisplayTimePlayed = noop }
+	-- InsertLink fills the focused macro or chat edit box, and none has focus.
+	-- Blizzard_DeprecatedChatInfo aliases it as ChatEdit_InsertLink, which
+	-- AceGUI's edit boxes hooksecurefunc.
+	_G.ChatFrameUtil = { DisplayTimePlayed = noop, InsertLink = function() return false end }
+	_G.ChatEdit_InsertLink = ChatFrameUtil.InsertLink
+	_G.GameTooltip = NewObject("GameTooltip", UIParent, "GameTooltip")
 	-- Blizzard_UIDropDownMenu: the classic dropdown, never open.
 	_G.UIDROPDOWNMENU_MAXLEVELS = 3
 	_G.UIDROPDOWNMENU_SHOW_TIME = 2
@@ -1553,6 +1596,8 @@ function Mock.Install()
 		{ "GameFontNormalLarge", 16, 1, 0.82, 0 }, { "GameFontHighlight", 12, 1, 1, 1 },
 		{ "GameFontHighlightSmall", 10, 1, 1, 1 }, { "GameFontHighlightLarge", 16, 1, 1, 1 },
 		{ "GameFontDisable", 12, 0.5, 0.5, 0.5 }, { "GameFontDisableSmall", 10, 0.5, 0.5, 0.5 },
+		{ "GameTooltipText", 12, 1, 1, 1 }, { "GameTooltipTextSmall", 10, 1, 1, 1 },
+		{ "GameTooltipHeaderText", 14, 1, 1, 1 },
 	}) do
 		local object = CreateFont(font[1])
 		object:SetFont([[Fonts\FRIZQT__.TTF]], font[2], "")
@@ -2136,7 +2181,6 @@ function Mock.InstallUI()
 	local function CatchAll(name) return NewObject(name) end
 
 	_G.ColorPickerFrame = CatchAll("ColorPickerFrame")
-	_G.GameTooltip = CatchAll("GameTooltip")
 	_G.ScrollUtil = {
 		InitScrollBoxListWithScrollBar = function() end,
 		InitScrollBoxWithScrollBar = function() end,
@@ -2148,11 +2192,6 @@ function Mock.InstallUI()
 	_G.CreateScrollBoxListLinearView = function() return CatchAll("ScrollBoxListLinearView") end
 	_G.CreateScrollBoxLinearView = function() return CatchAll("ScrollBoxLinearView") end
 	_G.CreateDataProvider = function(items) return { items = items } end
-	_G.RAID_CLASS_COLORS = {
-		WARRIOR = NewColor(0.78, 0.61, 0.43),
-		PALADIN = NewColor(0.96, 0.55, 0.73),
-		MAGE = NewColor(0.25, 0.78, 0.92),
-	}
 	_G.C_ClassColor = {
 		GetClassColor = function(token)
 			assert(type(token) == "string" or Mock.IsSecret(token), "C_ClassColor.GetClassColor requires a class token")
@@ -2161,7 +2200,6 @@ function Mock.InstallUI()
 			return RAID_CLASS_COLORS[key]
 		end,
 	}
-	_G.LOCALIZED_CLASS_NAMES_MALE = { WARRIOR = "Warrior", PALADIN = "Paladin", MAGE = "Mage" }
 
 	_G.SetPortraitTexture = function(texture) texture.__state.texture = "portrait" end
 	_G.GetRaidTargetIndex = function(unit) return Mock.raidTargets and Mock.raidTargets[unit] end
@@ -2261,11 +2299,6 @@ function Mock.InstallUI()
 	Mock.comboPoints = 0
 	_G.GetComboPoints = function() return Secret(Mock.comboPoints) end
 	_G.UnitPowerMissing = function() return Secret(300) end
-	_G.UnitXP = function() return 1200 end
-	Mock.resting = false
-	_G.IsResting = function() return Mock.resting end
-	_G.UnitXPMax = function() return 5000 end
-	_G.GetXPExhaustion = function() return nil end
 	_G.UnitCastingInfo = function()
 		return Secret("Fireball"), Secret("Fireball"), Secret(135812), Secret(0), Secret(3000), Secret(false), Secret(1),
 			Secret(true)

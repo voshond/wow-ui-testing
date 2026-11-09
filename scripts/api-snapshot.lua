@@ -192,6 +192,10 @@ for _, path in ipairs(Lines("find '" .. sourceDir .. "/Interface' -name '*.lua' 
 				for call in code:gmatch(":([%w_]+)%s*%(") do
 					calls[":" .. call] = calls[":" .. call] or relative
 				end
+				-- Engine namespaces the docs leave out (C_PetBattles.IsInBattle).
+				for call in (" " .. code):gmatch("[^%w_.:](C_[%w_]+%.[%w_]+)%s*%(") do
+					calls[call] = calls[call] or relative
+				end
 			end
 		end
 	end
