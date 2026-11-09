@@ -1,0 +1,6 @@
+## Interface: 11508
+## Title: Xml Addon
+
+Bom.lua
+Templates.xml
+Frames.xml
