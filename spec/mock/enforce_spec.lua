@@ -13,9 +13,10 @@ describe("wowmock API enforcement", function()
 
 	it("rejects an undocumented widget method", function()
 		local frame = CreateFrame("Frame", nil, UIParent)
+		assert.is_nil(frame.SetMadeUpThing)
 		local ok, err = pcall(function() frame:SetMadeUpThing(1) end)
 		assert.is_false(ok)
-		assert.is_not_nil(tostring(err):find("Frame:SetMadeUpThing is not a documented method", 1, true), err)
+		assert.is_not_nil(tostring(err):find("attempt to call method 'SetMadeUpThing'", 1, true), err)
 	end)
 
 	it("records documented methods it does not implement", function()

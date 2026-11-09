@@ -59,6 +59,21 @@ local function NineSlicePanel(nineSlice)
 	rawset(nineSlice, "GetBorderColor", function() return unpack(border) end)
 end
 
+-- Blizzard_SharedXML/SharedTooltipTemplates.lua; addons guard on the global
+-- before inheriting the template.
+local TooltipBackdropTemplateMixin = {}
+
+function TooltipBackdropTemplateMixin:TooltipBackdropOnLoad()
+	local color = rawget(self, "backdropColor") or TOOLTIP_DEFAULT_BACKGROUND_COLOR
+	local r, g, b = color:GetRGB()
+	self:SetBackdropColor(r, g, b, rawget(self, "backdropColorAlpha") or 1)
+end
+
+function TooltipBackdropTemplateMixin:SetBackdropColor(...) self.NineSlice:SetCenterColor(...) end
+function TooltipBackdropTemplateMixin:GetBackdropColor() return self.NineSlice:GetCenterColor() end
+function TooltipBackdropTemplateMixin:SetBackdropBorderColor(...) self.NineSlice:SetBorderColor(...) end
+function TooltipBackdropTemplateMixin:GetBackdropBorderColor() return self.NineSlice:GetBorderColor() end
+
 local function TooltipBackdrop(frame)
 	rawset(frame, "layoutType", "TooltipDefaultLayout")
 	local nineSlice = CreateFrame("Frame", nil, frame)
@@ -66,17 +81,11 @@ local function TooltipBackdrop(frame)
 	rawset(frame, "NineSlice", nineSlice)
 	for _, piece in ipairs(TOOLTIP_LAYOUT) do Piece(nineSlice, piece) end
 	NineSlicePanel(nineSlice)
-	rawset(frame, "SetBackdropColor", function(self, ...) self.NineSlice:SetCenterColor(...) end)
-	rawset(frame, "GetBackdropColor", function(self) return self.NineSlice:GetCenterColor() end)
-	rawset(frame, "SetBackdropBorderColor", function(self, ...) self.NineSlice:SetBorderColor(...) end)
-	rawset(frame, "GetBackdropBorderColor", function(self) return self.NineSlice:GetBorderColor() end)
-	frame:SetScript("OnLoad", function(self)
-		local color = rawget(self, "backdropColor") or TOOLTIP_DEFAULT_BACKGROUND_COLOR
-		local r, g, b = color:GetRGB()
-		self:SetBackdropColor(r, g, b, rawget(self, "backdropColorAlpha") or 1)
-	end)
+	for key, method in pairs(TooltipBackdropTemplateMixin) do rawset(frame, key, method) end
+	frame:SetScript("OnLoad", frame.TooltipBackdropOnLoad)
 end
 
 return function()
+	_G.TooltipBackdropTemplateMixin = TooltipBackdropTemplateMixin
 	Mock.templates.TooltipBackdropTemplate = TooltipBackdrop
 end
