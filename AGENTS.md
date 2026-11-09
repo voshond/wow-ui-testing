@@ -2,7 +2,10 @@
 
 - This is a library used by several addon repos. Nothing in `wowproof/`,
   `wowtest/`, `wowmock/` or `clientdata/` may name an addon that uses it;
-  `wowproof/spec/package_spec.lua` fails if one does.
+  `wowproof/spec/package_spec.lua` and `spec/package_names_spec.lua` fail if
+  one does. Generated snapshots (`wowmock/snapshots/`) are exempt: they hold
+  Blizzard's own identifiers (`EditModeUnitFrameSystemMixin`), so check with
+  `grep -ri --exclude-dir=snapshots ...`.
 - Code is Lua 5.1 compatible. Only `wowproof/blp.lua` (and anything that
   requires it) may use LuaJIT's ffi. Anything MagicMap loads through lupa
   (the API snapshot and its contract) must stay plain Lua 5.1.
