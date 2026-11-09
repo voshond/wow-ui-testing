@@ -23,9 +23,10 @@ local MOCK_ONLY = {
 	["Mock.TickUnitVisibility"] = "test helper",
 }
 
--- Documented, defined by Blizzard's Lua, or an engine function Blizzard calls.
+-- Documented, defined by Blizzard's Lua, an engine function Blizzard calls,
+-- or one of the engine's own Lua additions.
 local function IsClientFunction(name)
-	return API.Function(name) or API.LuaGlobal(name) or API.Called(name)
+	return API.Function(name) or API.LuaGlobal(name) or API.Called(name) or API.EngineLua(name)
 end
 
 describe("Client API contract", function()
@@ -83,6 +84,31 @@ describe("Client API contract", function()
 		end
 		table.sort(unknown)
 		assert.same({}, unknown)
+	end)
+
+	it("lists the client's Lua evidence beyond what the mock defines", function()
+		local snapshot = API.Snapshot()
+		local lua = snapshot.lua
+		local function Missing(section, names)
+			local missing = {}
+			for _, name in ipairs(names) do
+				if not section[name] then missing[#missing + 1] = name end
+			end
+			return missing
+		end
+		assert.same({}, Missing(lua.builtins, { "hooksecurefunc", "strsplit", "date", "debugstack",
+			"seterrorhandler", "issecurevariable" }), "Lua VM built-ins")
+		assert.same({}, Missing(lua.called, { ":AddDoubleLine", ":ClearLines", ":IsOwned", ":NumLines",
+			":SetMinimapMouseover" }), "GameTooltip methods Blizzard calls")
+		assert.same({}, Missing(lua.called, { "GetQuestLogCompletionText", "GetQuestUiMapID", "QuestLogPushQuest",
+			"GetProfessions", "GetProfessionInfo" }), "undocumented engine functions")
+		assert.same({}, Missing(lua.globals, { "tremove", "UiMapPoint.CreateFromCoordinates",
+			"UiMapPoint.CreateFromVector2D", "GetCVar", "CreateVector2D", "HideUIPanel", "ToggleWorldMap",
+			"ToggleQuestLog", "ChatFrameUtil.OpenChat", "ChatFrame_OpenChat", "ButtonFrameTemplate_HideButtonBar",
+			"ButtonFrameTemplate_HidePortrait", "Minimap_OnUpdate", "QuestMapQuestOptions_AbandonQuest" }),
+			"FrameXML Lua globals")
+		assert.is_nil(lua.called.callback, "locals and parameters are not client API")
+		assert.is_nil(lua.called.ability, "comment words are not client API")
 	end)
 
 	it("uses the client's enum values", function()

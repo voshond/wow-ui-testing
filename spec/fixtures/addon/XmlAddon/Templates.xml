@@ -1,0 +1,36 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Button name="XmlButtonTemplate" hidden="true" virtual="true">
+		<Scripts>
+			<OnLoad>
+				XmlAddonLog("template OnLoad " .. (self:GetName() or "?"));
+			</OnLoad>
+			<OnClick>
+				self.clicked = button;
+			</OnClick>
+		</Scripts>
+	</Button>
+	<Button name="XmlTextTemplate" inherits="XmlButtonTemplate" virtual="true">
+		<Size>
+			<AbsDimension x="40" y="16"/>
+		</Size>
+		<Layers>
+			<Layer level="ARTWORK">
+				<Texture name="$parentIcon" parentKey="Icon" file="Interface\Icons\Sample">
+					<Size x="16" y="16"/>
+					<Anchors>
+						<Anchor point="LEFT"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+		<ButtonText name="$parentText" inherits="GameFontNormalSmall" text="LOW">
+			<Anchors>
+				<Anchor point="LEFT" relativeKey="$parent.Icon" relativePoint="RIGHT">
+					<Offset>
+						<AbsDimension x="2" y="0"/>
+					</Offset>
+				</Anchor>
+			</Anchors>
+		</ButtonText>
+	</Button>
+</Ui>

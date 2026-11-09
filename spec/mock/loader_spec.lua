@@ -19,6 +19,15 @@ describe("wowmock loader", function()
 		assert.is_true(Mock.loadedAddons.SampleAddon)
 	end)
 
+	it("ignores Include and Script entries inside XML comments", function()
+		local xml = "spec/fixtures/addon/SampleAddon/SampleAddon.xml"
+		local handle = assert(io.open(xml))
+		local text = handle:read("*a")
+		handle:close()
+		assert.is_not_nil(text:find('<Include file="Missing\\Missing.xml"/>', 1, true))
+		assert.has_no_error(function() Loader.LoadToc(Helpers.TOC, "SampleAddon") end)
+	end)
+
 	it("passes a caller's namespace and reloads chunks afresh", function()
 		local shared = { loads = 5 }
 		Loader.LoadToc(Helpers.TOC, "SampleAddon", shared)

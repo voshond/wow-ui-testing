@@ -110,6 +110,70 @@ describe("fetch-wut.sh", function()
 		assert.equals(addonSha .. "\n", Read(consumer .. "/.wut/addons/Panel/.wut-ref"))
 	end)
 
+	it("needs no Lua when the repo has no wut.config.lua", function()
+		os.remove(consumer .. "/wut.config.lua")
+		local bin = scratch .. "/bin"
+		os.execute("mkdir -p " .. Quote(bin))
+		for _, name in ipairs({ "luajit", "lua5.1" }) do
+			Write(bin .. "/" .. name, "#!/bin/sh\necho called >&2\nexit 99\n")
+			os.execute("chmod +x " .. Quote(bin .. "/" .. name))
+		end
+		local output, code = Fetch("PATH=" .. Quote(bin) .. ":\"$PATH\"")
+		local stderr = Read(scratch .. "/stderr")
+		assert.equals(0, code, output .. stderr)
+		assert.is_true(Has(stderr, "no wut.config.lua; skipping addons"), stderr)
+		assert.is_false(Has(stderr, "called"), stderr)
+		assert.equals(libSha .. "\n", Read(consumer .. "/.wut/.wut-ref"))
+	end)
+
+	local function ReleaseZip()
+		local zip = scratch .. "/Panel.zip"
+		local output, code = Shell("cd spec/fixtures/addons/Panel && zip -qrX " .. Quote(zip) .. " Panel && sha256sum "
+			.. Quote(zip))
+		assert.equals(0, code, output)
+		return zip, output:match("^(%x+)")
+	end
+
+	local function PinRelease(zip, digest)
+		Write(consumer .. "/wut.config.lua", string.format([[return {
+	specs = { "tests/spec" },
+	addons = { { name = "PanelZip", url = %q, sha256 = %q, toc = "Panel/Panel.toc" } },
+}]], "file://" .. zip, digest))
+	end
+
+	it("fetches a release zip pinned by url and sha256, and wowmock loads it", function()
+		local zip, digest = ReleaseZip()
+		PinRelease(zip, digest)
+		local output, code = Fetch()
+		local stderr = Read(scratch .. "/stderr")
+		assert.equals(0, code, output .. stderr)
+		assert.equals(digest .. "\n", Read(consumer .. "/.wut/addons/PanelZip/.wut-ref"))
+		assert.equals("Panel/Panel.toc\n", Read(consumer .. "/.wut/addons/PanelZip/.wut-toc"))
+		assert.equals(0, select(2, Fetch()))
+		assert.is_true(Has(Read(scratch .. "/stderr"), "addon PanelZip " .. digest .. " already in .wut/addons"))
+
+		local Mock, Loader = require("wowmock"), require("wowmock.loader")
+		local addonsDir = Loader.addonsDir
+		Loader.addonsDir = consumer .. "/.wut/addons"
+		Mock.Extend("Panel", { globals = { "PanelRegistry" } })
+		Mock.Install()
+		local ok, err = pcall(Loader.LoadAddon, "PanelZip")
+		Loader.addonsDir = addonsDir
+		Mock.ClearExtensions()
+		assert.is_true(ok, err)
+		assert.is_true(Mock.loadedAddons.Panel)
+		assert.is_not_nil(PanelRegistry)
+	end)
+
+	it("rejects a release zip whose sha256 does not match", function()
+		local zip = ReleaseZip()
+		PinRelease(zip, ("0"):rep(64))
+		local _, code = Fetch()
+		assert.equals(1, code)
+		assert.is_true(Has(Read(scratch .. "/stderr"), "does not match the pinned " .. ("0"):rep(64)))
+		assert.is_nil(Read(consumer .. "/.wut/addons/PanelZip/.wut-ref"))
+	end)
+
 	it("rejects a .wut-version without a full SHA", function()
 		Write(consumer .. "/.wut-version", "v0.1.0\n")
 		local _, code = Fetch()

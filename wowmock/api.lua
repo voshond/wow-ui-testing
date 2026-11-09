@@ -53,6 +53,7 @@ API.TYPES = {
 	StatusBar = Chain(FRAME, "SimpleStatusBarAPI"),
 	Slider = Chain(FRAME, "SimpleSliderAPI"),
 	EditBox = Chain(FRAME, "SimpleEditBoxAPI"),
+	ScrollFrame = Chain(FRAME, "SimpleScrollFrameAPI"),
 	Cooldown = Chain(FRAME, "FrameAPICooldown"),
 	PlayerModel = Chain(FRAME, "SimpleModelAPI", "FrameAPICharacterModelBase"),
 	GameTooltip = Chain(FRAME, "FrameAPITooltip"),
@@ -66,6 +67,35 @@ API.TYPES = {
 	Curve = { "LuaCurveObjectBaseAPI", "LuaCurveObjectAPI" },
 	ColorCurve = { "LuaCurveObjectBaseAPI", "LuaColorCurveObjectAPI" },
 	UnitHealPredictionCalculator = { "UnitHealPredictionCalculatorAPI" },
+}
+
+-- Each type's parent in the client's widget hierarchy (IsObjectType). Types
+-- whose API chain has no SimpleObjectAPI (Font, data objects) have none.
+API.PARENTS = {
+	ScriptRegion = "Object",
+	Region = "ScriptRegion",
+	TextureBase = "Region",
+	Texture = "TextureBase",
+	Line = "TextureBase",
+	FontString = "Region",
+	Frame = "Region",
+	EventFrame = "Frame",
+	AuraContainer = "Frame",
+	Button = "Frame",
+	DropdownButton = "Button",
+	CheckButton = "Button",
+	StatusBar = "Frame",
+	Slider = "Frame",
+	EditBox = "Frame",
+	ScrollFrame = "Frame",
+	Cooldown = "Frame",
+	Model = "Frame",
+	PlayerModel = "Model",
+	GameTooltip = "Frame",
+	AnimationGroup = "Object",
+	Animation = "Object",
+	Alpha = "Animation",
+	FlipBook = "Animation",
 }
 
 local resolved = {}
@@ -118,6 +148,12 @@ end
 -- A global or table field defined in Blizzard's Lua, or nil.
 function API.LuaGlobal(name)
 	return API.Snapshot().lua.globals[name]
+end
+
+-- A Lua VM addition the client's engine defines (strsplit, hooksecurefunc), or nil.
+function API.EngineLua(name)
+	local builtins = API.Snapshot().lua.builtins
+	return builtins and builtins[name]
 end
 
 -- Undocumented engine functions (name) and methods (":name") that Blizzard

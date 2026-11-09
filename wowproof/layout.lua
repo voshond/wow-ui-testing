@@ -53,7 +53,15 @@ function Layout:Rect(region)
 	return rect
 end
 
+-- Like the client, per axis an edge anchor (TOP, LEFT, ...) wins over the
+-- centre component of another anchor: LEFT + RIGHT + TOP with a height puts
+-- the region below TOP, not around the vertical centre LEFT names.
 local function Axis(anchors, size)
+	local edges = {}
+	for _, anchor in ipairs(anchors) do
+		if anchor[1] ~= 0.5 then edges[#edges + 1] = anchor end
+	end
+	if #edges > 0 then anchors = edges end
 	local low, high
 	for _, anchor in ipairs(anchors) do
 		if not low or anchor[1] < low[1] then low = anchor end

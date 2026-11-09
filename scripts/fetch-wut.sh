@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fetches the pinned wow-ui-testing library into .wut/ and the third-party
-# addons listed in wut.config.lua into .wut/addons/<name>/. Addon repos keep a
-# copy of this script; run it from (or pass) the addon repo's root.
+# addons listed in wut.config.lua into .wut/addons/<name>/: git pins (source +
+# ref) as a tree, release zips (url + sha256) checked and unzipped. Addon repos
+# keep a copy of this script; run it from (or pass) the addon repo's root.
 #
 #   bash scripts/fetch-wut.sh [repo root]
 #
@@ -52,6 +53,27 @@ fetch_tree() {
 
 current_ref() { cat "$1/.wut-ref" 2>/dev/null || true; }
 
+sha256() {
+	if command -v sha256sum >/dev/null; then sha256sum "$1" | awk '{ print $1 }'; else shasum -a 256 "$1" | awk '{ print $1 }'; fi
+}
+
+# Downloads the release zip <url>, checks it against <digest> and unpacks it
+# into the new folder <staging>, with .wut-ref.
+fetch_release() {
+	local name="$1" url="$2" digest="$3" staging="$4" scratch actual
+	scratch="$(mktemp -d)"
+	curl --fail --silent --show-error --location --retry 3 --max-time 300 -A "fetch-wut" "$url" -o "$scratch/release.zip"
+	actual="$(sha256 "$scratch/release.zip")"
+	if [[ "$actual" != "$digest" ]]; then
+		rm -rf -- "$scratch"
+		die "release $name: sha256 $actual does not match the pinned $digest"
+	fi
+	mkdir -p "$staging"
+	unzip -q "$scratch/release.zip" -d "$staging"
+	rm -rf -- "$scratch"
+	printf '%s\n' "$digest" > "$staging/.wut-ref"
+}
+
 if [[ -n "${WUT_DIR:-}" ]]; then
 	lib="$(cd "$WUT_DIR" && pwd)"
 	say "using the local library in $lib (WUT_DIR)"
@@ -72,8 +94,15 @@ else
 	lib="$wut_dir"
 fi
 
+has_config() {
+	if [[ -n "${WUT_CONFIG:-}" ]]; then return 0; fi
+	[[ -f wut.config.lua || -f tests/wut.config.lua ]]
+}
+
 addons=""
-if [[ -f "$lib/wowtest/addons.lua" ]]; then
+if ! has_config; then
+	say "no wut.config.lua; skipping addons"
+elif [[ -f "$lib/wowtest/addons.lua" ]]; then
 	lua="$(command -v luajit || command -v lua5.1 || true)"
 	[[ -n "$lua" ]] || die "LuaJIT or Lua 5.1 is required to read wut.config.lua"
 	addons="$("$lua" "$lib/wowtest/addons.lua" ${WUT_CONFIG:+"$WUT_CONFIG"})" || die "cannot read the addons from wut.config.lua"
@@ -90,7 +119,11 @@ while IFS=$'\t' read -r name source ref toc; do
 		say "addon $name $ref already in .wut/addons"
 	else
 		rm -rf -- "$destination.new"
-		fetch_tree "$source" "$ref" "$destination.new"
+		if [[ "$source" == https://* || "$source" == file://* ]]; then
+			fetch_release "$name" "$source" "$ref" "$destination.new"
+		else
+			fetch_tree "$source" "$ref" "$destination.new"
+		fi
 		rm -rf -- "$destination"
 		mv "$destination.new" "$destination"
 		say "fetched addon $name $ref into .wut/addons"

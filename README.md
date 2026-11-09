@@ -106,13 +106,18 @@ Regenerate a snapshot from a wow-ui-source checkout with
 
 2. Add `wut.config.lua` (or `tests/wut.config.lua`), see
    [Configuring wowtest](#configuring-wowtest). Third-party addons the addon
-   runs inside go in `addons`, pinned like the library:
+   runs inside go in `addons`, pinned by a git commit, or by URL and sha256
+   for addons that only ship release zips:
 
    ```lua
    addons = {
    	{ name = "Titan", source = "owner/repo", ref = "<full commit SHA>", toc = "Titan/Titan.toc" },
+   	{ name = "Other", url = "https://example.com/Other.zip", sha256 = "<64 hex digits>", toc = "Other/Other.toc" },
    },
    ```
+
+   A release zip is checked against its sha256 and unzipped as it is. A repo
+   without a config file needs no Lua to fetch.
 
 3. Fetch and run:
 
@@ -137,7 +142,10 @@ Regenerate a snapshot from a wow-ui-source checkout with
 
    `LoadAddon` loads the entry's `toc` (default `<name>.toc`), preferring the
    client's flavour TOCs (`Loader.tocSuffixes`: `_Vanilla`, `-Vanilla`,
-   `_Classic`, `-Classic`).
+   `_Classic`, `-Classic`). XML files load like the client's: scripts and
+   includes in document order, virtual frames as templates `CreateFrame` can
+   inherit, other frames built with their layers, anchors and scripts. A host
+   can add its own Lua templates to `Mock.templates` (`name -> function(frame)`).
 
 5. In CI, cache `.wut` keyed on the pins. The library is public, so the fetch
    needs no secret; the job's own token only spares GitHub's anonymous rate

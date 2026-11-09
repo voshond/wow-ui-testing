@@ -16,6 +16,7 @@ if not ok then
 	io.stderr:write(config, "\n")
 	os.exit(2)
 end
+-- name, source, ref, toc: a release zip gives its url and sha256 as source and ref.
 for _, addon in ipairs(config.addons) do
-	print(table.concat({ addon.name, addon.source, addon.ref, addon.toc or "" }, "\t"))
+	print(table.concat({ addon.name, addon.source or addon.url, addon.ref or addon.sha256, addon.toc or "" }, "\t"))
 end

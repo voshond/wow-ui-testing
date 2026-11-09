@@ -261,6 +261,23 @@ describe("wowproof paint", function()
 		assert.is_true(Has(Render(), "<title>model: PlayerModel</title>"))
 	end)
 
+	it("draws nothing for a texture whose file is empty, tinted or not", function()
+		scene.Node("Texture", frame, { points = { { all = true } }, texture = { file = "", vertexColor = { 1, 1, 1, 1 } } })
+		scene.Node("Texture", frame, { points = { { all = true } }, texture = { file = "" } })
+		local svg = Render()
+		assert.is_false(Has(svg, 'fill="rgb(255,255,255)"'), svg)
+		assert.is_false(Has(svg, "stroke-dasharray"), svg)
+		assert.equals(1, select(2, svg:gsub("<rect ", "")), svg)
+	end)
+
+	it("keeps the spaces between colour runs", function()
+		scene.Node("FontString", frame, { points = { { all = true } },
+			text = { text = "Thrall |r|cffffd200Guild Master|r", size = 12 } })
+		local svg = Render()
+		assert.is_true(Has(svg, '<text xml:space="preserve" '), svg)
+		assert.is_true(Has(svg, ">Thrall </tspan>"), svg)
+	end)
+
 	it("renders the same scene to the same SVG", function()
 		scene.Node("StatusBar", frame, { points = { { all = true } }, bar = { min = 0, max = 3, value = 1 } })
 		scene.Node("FontString", frame, { points = { { point = "CENTER" } }, text = { text = "1/3" } })

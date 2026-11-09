@@ -1,17 +1,19 @@
 --[[
 Loads an addon into the mock the way the client does: every file its TOC
-lists, in order, with (addonName, ns) as the chunk varargs. XML files only
-contribute their <Script file=...> and <Include file=...> entries.
+lists, in order, with (addonName, ns) as the chunk varargs. XML files run
+through wowmock.xml: their scripts and includes load in document order, and
+their frames and templates are built on the mock.
 
 Files are read and compiled once per process. Calling a compiled chunk again
 runs its main body afresh (new locals and closures), so every load still
 starts from a clean state.
 ]]
 local Mock = require("wowmock")
+local Xml = require("wowmock.xml")
 
 local Loader = { skip = {} }
 
-local chunks, includes, tocs = {}, {}, {}
+local chunks, documents, tocs = {}, {}, {}
 
 -- Path fragments never loaded (libraries replaced by stand-ins in specs).
 function Loader.Skip(patterns)
@@ -25,29 +27,35 @@ local function Skipped(path)
 	return false
 end
 
+local BOM = "\239\187\191"
+
+-- Like the client, a leading UTF-8 byte order mark is skipped.
 local function Compile(path)
 	local chunk = chunks[path]
 	if not chunk then
-		chunk = assert(loadfile(path))
+		local handle = assert(io.open(path, "rb"))
+		local source = handle:read("*a")
+		handle:close()
+		if source:sub(1, 3) == BOM then source = source:sub(4) end
+		chunk = assert(loadstring(source, "@" .. path))
 		chunks[path] = chunk
 	end
 	return chunk
 end
 
-local function XmlIncludes(path)
-	local files = includes[path]
-	if not files then
-		local dir = path:match("^(.*)/[^/]+$")
-		local handle = assert(io.open(path))
-		local xml = handle:read("*a")
+-- Parsed once per process; the parser drops comments like the client
+-- (Ace3's AceConfig-3.0.xml has a commented-out include).
+local function XmlDocument(path)
+	local document = documents[path]
+	if not document then
+		local handle = assert(io.open(path, "rb"))
+		local text = handle:read("*a")
 		handle:close()
-		files = {}
-		for file in xml:gmatch('<%a+%s+file%s*=%s*["\']([^"\']+)["\']') do
-			files[#files + 1] = dir .. "/" .. file:gsub("\\", "/")
-		end
-		includes[path] = files
+		if text:sub(1, 3) == BOM then text = text:sub(4) end
+		document = Xml.Parse(text, path)
+		documents[path] = document
 	end
-	return files
+	return document
 end
 
 function Loader.TocFiles(tocPath)
@@ -69,7 +77,7 @@ end
 local function LoadFile(path, addonName, ns)
 	if Skipped(path) then return end
 	if path:match("%.xml$") then
-		for _, file in ipairs(XmlIncludes(path)) do LoadFile(file, addonName, ns) end
+		Xml.Load(XmlDocument(path), path, function(file) LoadFile(file, addonName, ns) end)
 	elseif path:match("%.lua$") then
 		Compile(path)(addonName, ns)
 	else
