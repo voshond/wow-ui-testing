@@ -2,6 +2,7 @@ local Raster = require("wowproof.raster")
 local WowUiTextures = require("wowproof.sources.wow_ui_textures")
 local WagoCasc = require("wowproof.sources.wago_casc")
 local AtlasTable = require("wowproof.sources.atlas_table")
+local RemoteDir = require("wowproof.sources.remote_dir")
 
 local REF = "abc123"
 
@@ -54,6 +55,22 @@ describe("wowproof wow-ui-textures source", function()
 		assert.is_nil(resolve(1234))
 		assert.is_nil(resolve(1.5))
 		assert.is_nil(resolve("Interface\\Icons\\Spell_Holy_Renew"))
+	end)
+
+	it("copies files from a remote folder into its cache once, and stays inside it", function()
+		Write(dir .. "/remote/classic/Male-Human.png", "png")
+		local cache = dir .. "/cache"
+		local resolve = RemoteDir({ remote = dir .. "/remote/", dir = cache })
+		assert.equals(cache .. "/classic/Male-Human.png", resolve("classic/Male-Human.png"))
+		assert.equals("png", Raster.Read(cache .. "/classic/Male-Human.png"))
+		assert.is_nil(resolve("classic/Female-Orc.png"))
+		Write(dir .. "/remote/classic/Female-Orc.png", "png")
+		assert.is_nil(resolve("classic/Female-Orc.png"))
+		assert.is_nil(resolve("../remote/classic/Female-Orc.png"))
+		assert.is_nil(resolve("/etc/hostname"))
+		assert.equals(cache .. "/classic/Male-Human.png", RemoteDir({ dir = cache })("classic/Male-Human.png"))
+		assert.is_nil(RemoteDir({ dir = cache, remote = dir .. "/remote", fetch = false })("classic/Female-Orc.png"))
+		assert.has_error(function() RemoteDir({ remote = dir }) end)
 	end)
 
 	it("looks atlases up by name, case-insensitively like the client", function()

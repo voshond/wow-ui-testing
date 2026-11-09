@@ -233,6 +233,18 @@ describe("wowproof paint", function()
 			Paint.CoverRect({ left = 0, top = 0, width = 32, height = 32 }, { left = 0, top = 0, width = 100, height = 25 }))
 	end)
 
+	it("draws model art from a local file as is", function()
+		scene.adapter.Model = function(node) return node.model end
+		scene.Node("PlayerModel", frame, { points = { { all = true } }, model = { unit = "player" } })
+		local function File(path)
+			if path == "captures/Male-Human.png" then return "data:image/png;base64,CA", 20, 20 end
+		end
+		local svg = Render(nil, { image = Image, file = File, model = function() return { path = "captures/Male-Human.png" } end })
+		assert.is_true(Has(svg, 'href="data:image/png;base64,CA"'))
+		svg = Render(nil, { image = Image, model = function() return { path = "captures/Missing.png" } end })
+		assert.is_true(Has(svg, "<title>model: player</title>"))
+	end)
+
 	it("draws models without art as placeholders titled with their unit, and cleared models as nothing", function()
 		scene.adapter.Model = function(node) return node.model end
 		local model = scene.Node("PlayerModel", frame, { points = { { all = true } }, model = { unit = "focus" } })

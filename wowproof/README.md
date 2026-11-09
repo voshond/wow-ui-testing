@@ -82,8 +82,8 @@ the adapter's job.
   - atlases, cropped to their sub-rectangle; later texture coordinates map into it
   - anything else as a dashed placeholder titled with its path or atlas name
 - **Models:** `PlayerModel` and the other model frames through `assets.models(info)`, which gets
-  the adapter's `Model(r)` and returns a texture path (resolved through `assets.textures`) or
-  `{ file, texCoords }`. The image covers the frame (centre-cropped to its aspect) at the frame's
+  the adapter's `Model(r)` and returns a texture path (resolved through `assets.textures`),
+  `{ file, texCoords }`, or `{ path, texCoords }` for a local image used as is. The image covers the frame (centre-cropped to its aspect) at the frame's
   alpha times the model alpha, desaturated by the model's desaturation. Without art it's a dashed
   placeholder titled `model: <unit>`; a cleared model draws nothing.
 - **Status bars and text:** status bar fills by value, and font strings with justification, outline and `|c` colour codes.
@@ -133,7 +133,15 @@ assets.atlases = require("wowproof.sources.atlas_table")(pinnedAtlases)
 Tiling atlases draw once, not repeated, and flipbooks show their whole sheet.
 
 Models can't be rendered without the client, so a host maps them to stand-in
-art, for example a race portrait for player units:
+art. `wowproof.sources.remote_dir` copies named files once from a private
+folder (`host:/dir` over `ssh`, an `https://` URL, or a local folder) into a
+cache, for example in-game captures that must not live in the repository:
+
+```lua
+local captures = require("wowproof.sources.remote_dir")({ remote = "nas:/srv/captures", dir = ".proof-art/captures" })
+```
+
+A race portrait for player units, from the mirror:
 
 ```lua
 assets.models = function(info)

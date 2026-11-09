@@ -28,11 +28,10 @@ function Proof.New(options)
 	}, Proof)
 end
 
-function Proof:Image(file)
-	local cached = self.images[file]
+local function LoadImage(self, key, locate)
+	local cached = self.images[key]
 	if cached == nil then
-		local resolve = self.assets.textures
-		local localFile = resolve and resolve(file)
+		local localFile = locate()
 		local png = localFile and Raster.ToPng(localFile, self.cacheDir)
 		local uri = png and Raster.DataUri(png)
 		cached = false
@@ -40,10 +39,21 @@ function Proof:Image(file)
 			local width, height = Raster.PngSize(png)
 			cached = { uri = uri, width = width, height = height }
 		end
-		self.images[file] = cached
+		self.images[key] = cached
 	end
 	if not cached then return nil end
 	return cached.uri, cached.width, cached.height
+end
+
+function Proof:Image(file)
+	return LoadImage(self, file, function()
+		local resolve = self.assets.textures
+		return resolve and resolve(file)
+	end)
+end
+
+function Proof:File(path)
+	return LoadImage(self, "path:" .. path, function() return path end)
 end
 
 local function Pixel(value, size)
@@ -104,6 +114,7 @@ function Proof:Render(region, options)
 		debug = options.debug,
 		background = options.background,
 		image = function(file) return self:Image(file) end,
+		file = function(path) return self:File(path) end,
 		atlas = function(name) return self:Atlas(name) end,
 		font = function(file) return self:Font(file) end,
 		model = function(info) return self.assets.models and self.assets.models(info) end,

@@ -391,7 +391,12 @@ function Context:DrawModel(region, rect, alpha)
 	if not subject or alpha <= 0 then return end
 	local art = self.model(info)
 	if type(art) == "string" then art = { file = art } end
-	local image = art and art.file and self:ImageDef(art.file, function() return self.image(art.file) end)
+	local image
+	if art and art.path then
+		image = self:ImageDef("path:" .. art.path, function() return self.file(art.path) end)
+	elseif art and art.file then
+		image = self:ImageDef(art.file, function() return self.image(art.file) end)
+	end
 	if not image or not image.width then
 		self:DrawPlaceholder(rect, alpha, "model: " .. subject)
 		return
@@ -487,6 +492,7 @@ function Paint.Render(options)
 		atlas = options.atlas or function() return nil end,
 		font = options.font or function() return nil end,
 		model = options.model or function() return nil end,
+		file = options.file or function() return nil end,
 		defs = {},
 		body = {},
 		images = {},

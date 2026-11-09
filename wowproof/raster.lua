@@ -112,6 +112,7 @@ local function NonEmpty(file)
 	handle:close()
 	return size > 0
 end
+Raster.NonEmpty = NonEmpty
 
 function Raster.Download(url, target, headers)
 	Raster.MakeDir(target:match("^(.*)/[^/]+$") or ".")
