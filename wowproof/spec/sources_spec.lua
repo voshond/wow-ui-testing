@@ -1,5 +1,7 @@
 local Raster = require("wowproof.raster")
 local WowUiTextures = require("wowproof.sources.wow_ui_textures")
+local WagoCasc = require("wowproof.sources.wago_casc")
+local AtlasTable = require("wowproof.sources.atlas_table")
 
 local REF = "abc123"
 
@@ -41,5 +43,25 @@ describe("wowproof wow-ui-textures source", function()
 		assert.is_nil(resolve("Interface\\Nowhere\\Thing"))
 		local missing = Raster.Read(dir .. "/missing-" .. REF .. ".txt")
 		assert.equals("ICONS\\SPELL_NATURE_LIFEBLOOM\nNOWHERE\\THING\n", missing)
+	end)
+
+	it("resolves client file IDs from the pinned build's cache only", function()
+		assert.has_error(function() WagoCasc({ dir = dir }) end)
+		Write(dir .. "/casc-1.2.3.4/7526019.png", "png")
+		local resolve = WagoCasc({ build = "1.2.3.4", dir = dir, fetch = false })
+		assert.equals(dir .. "/casc-1.2.3.4/7526019.png", resolve(7526019))
+		assert.equals(dir .. "/casc-1.2.3.4/7526019.png", resolve("7526019"))
+		assert.is_nil(resolve(1234))
+		assert.is_nil(resolve(1.5))
+		assert.is_nil(resolve("Interface\\Icons\\Spell_Holy_Renew"))
+	end)
+
+	it("looks atlases up by name, case-insensitively like the client", function()
+		local info = { file = 7526019 }
+		local resolve = AtlasTable({ ["RaidFrame-Icon-Rez"] = info })
+		assert.equals(info, resolve("raidframe-icon-rez"))
+		assert.equals(info, resolve("RAIDFRAME-ICON-REZ"))
+		assert.is_nil(resolve("Missing"))
+		assert.is_nil(resolve(nil))
 	end)
 end)

@@ -176,19 +176,44 @@ local GRADIENT = '<linearGradient id="{id}" x1="%s" y1="%s" x2="%s" y2="%s">'
 	.. '<stop offset="0" stop-color="%s" stop-opacity="%s"/><stop offset="1" stop-color="%s" stop-opacity="%s"/>'
 	.. '</linearGradient>'
 
-function Context:ImageDef(file)
-	local cached = self.images[file]
+function Context:ImageDef(key, load)
+	local cached = self.images[key]
 	if cached ~= nil then return cached or nil end
-	local href, width, height = self.image(file)
+	local href, width, height, rect = load()
 	if not href then
-		self.images[file] = false
+		self.images[key] = false
 		return nil
 	end
 	local id = self:Define(string.format('<image id="{id}" width="%s" height="%s" preserveAspectRatio="none" href="%s"/>',
 		Number(width or 1), Number(height or 1), href))
-	local image = { id = id, width = width, height = height }
-	self.images[file] = image
+	local image = { id = id, width = width, height = height, rect = rect }
+	self.images[key] = image
 	return image
+end
+
+local function AtlasCoords(coords, rect)
+	if not coords or #coords < 4 then return nil end
+	local width, height = rect.right - rect.left, rect.bottom - rect.top
+	local function U(value) return (value - rect.left) / width end
+	local function V(value) return (value - rect.top) / height end
+	if #coords >= 8 then
+		local mapped = {}
+		for index = 1, 8, 2 do mapped[index], mapped[index + 1] = U(coords[index]), V(coords[index + 1]) end
+		return mapped
+	end
+	return { U(coords[1]), U(coords[2]), V(coords[3]), V(coords[4]) }
+end
+Paint.AtlasCoords = AtlasCoords
+
+function Context:TextureImage(texture)
+	if texture.atlas then
+		local atlas = texture.atlas
+		local image = self:ImageDef("atlas:" .. atlas, function() return self.atlas(atlas) end)
+		if image then return image, AtlasCoords(texture.texCoords, image.rect) end
+	end
+	local file = texture.file
+	if not file then return nil end
+	return self:ImageDef(file, function() return self.image(file) end), texture.texCoords
 end
 
 function Context:DrawImagePiece(image, target, source)
@@ -304,7 +329,7 @@ function Context:DrawTexture(region, rect, alpha)
 		self:Emit(string.format('<rect %s %s%s/>', RectAttributes(rect), Fill(Multiply(solid, texture.vertexColor), alpha), blend))
 		return
 	end
-	local image = texture.file and self:ImageDef(texture.file)
+	local image, coords = self:TextureImage(texture)
 	if image then
 		local filter = ""
 		local tint = texture.vertexColor
@@ -317,10 +342,10 @@ function Context:DrawTexture(region, rect, alpha)
 		self:Emit(string.format('<g opacity="%s"%s%s>', Number(Clamp(alpha)), filter, blend))
 		if texture.slice and image.width then
 			self:DrawNineSlice(image, texture.slice, rect)
-		elseif NeedsAffine(texture.texCoords) and image.width then
-			self:DrawImageAffine(image, rect, texture.texCoords)
+		elseif NeedsAffine(coords) and image.width then
+			self:DrawImageAffine(image, rect, coords)
 		else
-			self:DrawImagePiece(image, rect, SourceRect(texture.texCoords, image.width or 1, image.height or 1))
+			self:DrawImagePiece(image, rect, SourceRect(coords, image.width or 1, image.height or 1))
 		end
 		self:Emit("</g>")
 		return
@@ -411,6 +436,7 @@ function Paint.Render(options)
 		layout = layout,
 		root = root,
 		image = options.image or function() return nil end,
+		atlas = options.atlas or function() return nil end,
 		font = options.font or function() return nil end,
 		defs = {},
 		body = {},

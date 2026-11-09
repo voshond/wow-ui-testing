@@ -81,6 +81,52 @@ function Raster.ToPng(file, cacheDir)
 	return target
 end
 
+function Raster.RawToPng(rgba, width, height, target)
+	local tool = Raster.ImageTool()
+	if not tool then return nil end
+	local raw = target .. ".rgba"
+	Raster.Write(raw, rgba)
+	local ok = Run(string.format("%s -size %dx%d -depth 8 %s %s >/dev/null 2>&1",
+		tool, width, height, Quote("rgba:" .. raw), Quote(target)))
+	os.remove(raw)
+	return ok and target or nil
+end
+
+function Raster.Crop(png, rect, cacheDir)
+	local tool = Raster.ImageTool()
+	if not tool or not Raster.Exists(png) then return nil end
+	Raster.MakeDir(cacheDir)
+	local geometry = string.format("%dx%d+%d+%d", rect.width, rect.height, rect.left, rect.top)
+	local target = cacheDir .. "/" .. CacheName(png .. "@" .. geometry)
+	if Raster.Exists(target) then return target end
+	if not Run(string.format("%s %s -crop %s +repage %s >/dev/null 2>&1", tool, Quote(png), geometry, Quote(target))) then
+		return nil
+	end
+	return target
+end
+
+local function NonEmpty(file)
+	local handle = io.open(file, "rb")
+	if not handle then return false end
+	local size = handle:seek("end")
+	handle:close()
+	return size > 0
+end
+
+function Raster.Download(url, target, headers)
+	Raster.MakeDir(target:match("^(.*)/[^/]+$") or ".")
+	local partial = target .. ".part"
+	local curl = io.popen("curl -fsSL --retry 2 --max-time 60 -H @- -o " .. Quote(partial) .. " " .. Quote(url) .. " 2>/dev/null", "w")
+	curl:write(table.concat(headers or { "User-Agent: wowproof" }, "\n"), "\n")
+	curl:close()
+	if not NonEmpty(partial) then
+		os.remove(partial)
+		return false
+	end
+	os.rename(partial, target)
+	return true
+end
+
 local function UInt32(data, offset)
 	local a, b, c, d = data:byte(offset, offset + 3)
 	return ((a * 256 + b) * 256 + c) * 256 + d

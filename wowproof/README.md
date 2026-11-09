@@ -57,7 +57,7 @@ the adapter's job.
 | `Size(r)`, `Scale(r)` | width, height; own scale |
 | `Shown(r)`, `Alpha(r)`, `IgnoresParentAlpha(r)` | own shown state; own alpha; boolean |
 | `Strata(r)`, `Level(r)`, `Layer(r)` | strata or nil (inherited); frame level; draw layer and sublevel |
-| `Texture(r)` | `{ color, vertexColor, file, atlas, gradient = { orientation, from, to }, blend, slice }` |
+| `Texture(r)` | `{ color, vertexColor, file, atlas, gradient = { orientation, from, to }, blend, slice, texCoords }` (`atlas` only while the texture shows it; `texCoords` set after `SetAtlas` are file coordinates, as in the client) |
 | `Bar(r)` | nil, or for status bars `{ min, max, value, orientation, reverse, color }` |
 | `Text(r)` | nil, or for font strings `{ text, font, size, flags, color, justifyH, justifyV }` |
 | `FillOf(r)` *(optional)* | the status bar whose fill texture `r` is; the fill then gets its rect from the bar value |
@@ -78,7 +78,8 @@ the adapter's job.
   - Blizzard's white textures, drawn as solid colour
   - resolved image files, tinted by vertex colour, including nine-slice and
     texture coordinates (crops, mirrors, rotations and tiling beyond 0–1, such as backdrop edges)
-  - anything else as a dashed placeholder titled with its path
+  - atlases, cropped to their sub-rectangle; later texture coordinates map into it
+  - anything else as a dashed placeholder titled with its path or atlas name
 - **Status bars and text:** status bar fills by value, and font strings with justification, outline and `|c` colour codes.
 
 Rendering is deterministic: the same scene gives the same SVG.
@@ -102,8 +103,28 @@ assets.textures = function(path) return ownTexture(path) or art(path) end
 ```
 
 Files the commit lacks are remembered in `missing-<ref>.txt` and never
-requested again. Atlases (`SetAtlas`) still draw as placeholders: they need
-Blizzard's atlas table.
+requested again.
+
+The mirror stops at 10.0, so newer art (most atlas sheets) comes from
+`wowproof.sources.wago_casc`. It resolves client file IDs to PNGs through
+[wago.tools](https://wago.tools)' CASC download, pinned to one client build.
+`wowproof.blp` decodes the BLP2 files (uncompressed, palette and DXT1/3/5),
+and ImageMagick writes the PNG. It caches under `<dir>/casc-<build>/`.
+
+`assets.atlases` maps an atlas name to `{ file, width, height, left, right,
+top, bottom, tilesH, tilesV }`, the fields of `C_Texture.GetAtlasInfo`, with
+`file` resolved through `assets.textures`. `wowproof.sources.atlas_table`
+wraps a plain table and looks names up case-insensitively, like the client.
+Ship a pinned subset of the atlas table with the host so renders stay
+deterministic and work offline.
+
+```lua
+local files = require("wowproof.sources.wago_casc")({ build = "1.60.1.70862", dir = ".proof-art" })
+assets.textures = function(path) return ownTexture(path) or art(path) or files(path) end
+assets.atlases = require("wowproof.sources.atlas_table")(pinnedAtlases)
+```
+
+Tiling atlases draw once, not repeated, and flipbooks show their whole sheet.
 
 ## Tests
 

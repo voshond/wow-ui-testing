@@ -6,18 +6,6 @@ local function UrlEncode(text)
 	return (text:gsub("[^%w%-_%.~/]", function(char) return string.format("%%%02X", char:byte()) end))
 end
 
-local function DirName(path)
-	return path:match("^(.*)/[^/]+$") or "."
-end
-
-local function NonEmpty(file)
-	local handle = io.open(file, "rb")
-	if not handle then return false end
-	local size = handle:seek("end")
-	handle:close()
-	return size > 0
-end
-
 return function(options)
 	options = options or {}
 	local repository = options.repository or DEFAULT_REPOSITORY
@@ -31,21 +19,10 @@ return function(options)
 	local trees, missing = {}, nil
 
 	local function Download(url, target, api)
-		Raster.MakeDir(DirName(target))
-		local partial = target .. ".part"
 		local headers = { "User-Agent: wowproof" }
 		if api then headers[#headers + 1] = "Accept: application/vnd.github+json" end
 		if api and token and token ~= "" then headers[#headers + 1] = "Authorization: Bearer " .. token end
-		local curl = io.popen("curl -fsSL --retry 2 --max-time 60 -H @- -o " .. Raster.Quote(partial) .. " "
-			.. Raster.Quote(url) .. " 2>/dev/null", "w")
-		curl:write(table.concat(headers, "\n"), "\n")
-		curl:close()
-		if not NonEmpty(partial) then
-			os.remove(partial)
-			return false
-		end
-		os.rename(partial, target)
-		return true
+		return Raster.Download(url, target, headers)
 	end
 
 	local function Tree(sha)

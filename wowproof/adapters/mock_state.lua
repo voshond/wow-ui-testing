@@ -145,12 +145,13 @@ return function(options)
 		local barState = bar and State(bar) or {}
 		local file = state.texture or barState.texture
 		if file ~= nil and type(file) ~= "string" then file = tostring(file) end
-		if file and file:sub(1, 6) == "atlas:" then file = nil end
+		local atlas
+		if file and file:sub(1, 6) == "atlas:" then atlas, file = state.atlas or file:sub(7), nil end
 		return {
 			color = Color(state.colorTexture),
 			vertexColor = Color(barState.color) or Color(state.vertexColor),
 			file = file,
-			atlas = state.atlas,
+			atlas = atlas,
 			gradient = gradient,
 			blend = state.blendMode,
 			slice = state.sliceMargins,

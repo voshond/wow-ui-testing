@@ -24,6 +24,7 @@ function Proof.New(options)
 		settle = options.settle,
 		entries = {},
 		images = {},
+		atlases = {},
 	}, Proof)
 end
 
@@ -43,6 +44,38 @@ function Proof:Image(file)
 	end
 	if not cached then return nil end
 	return cached.uri, cached.width, cached.height
+end
+
+local function Pixel(value, size)
+	return math.floor(value * size + 0.5)
+end
+
+local function LoadAtlas(self, name)
+	local resolve, textures = self.assets.atlases, self.assets.textures
+	local info = resolve and textures and resolve(name)
+	local file = info and textures(info.file)
+	local png = file and Raster.ToPng(file, self.cacheDir)
+	if not png then return false end
+	local width, height = Raster.PngSize(png)
+	if not width then return false end
+	local left, top = Pixel(info.left, width), Pixel(info.top, height)
+	local rect = { left = left, top = top, width = Pixel(info.right, width) - left, height = Pixel(info.bottom, height) - top }
+	if rect.width <= 0 or rect.height <= 0 then return false end
+	local crop = Raster.Crop(png, rect, self.cacheDir)
+	local uri = crop and Raster.DataUri(crop)
+	if not uri then return false end
+	return { uri = uri, width = rect.width, height = rect.height,
+		rect = { left = info.left, right = info.right, top = info.top, bottom = info.bottom } }
+end
+
+function Proof:Atlas(name)
+	local cached = self.atlases[name]
+	if cached == nil then
+		cached = LoadAtlas(self, name) or false
+		self.atlases[name] = cached
+	end
+	if not cached then return nil end
+	return cached.uri, cached.width, cached.height, cached.rect
 end
 
 function Proof:Font(file)
@@ -71,6 +104,7 @@ function Proof:Render(region, options)
 		debug = options.debug,
 		background = options.background,
 		image = function(file) return self:Image(file) end,
+		atlas = function(name) return self:Atlas(name) end,
 		font = function(file) return self:Font(file) end,
 	})
 end

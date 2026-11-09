@@ -75,6 +75,13 @@ describe("wowproof package", function()
 		assert.is_true(adapter.ClipsChildren(bar))
 		assert.is_false(adapter.ClipsChildren(root))
 		assert.same({ min = 0, max = 10, value = 4, reverse = false, color = { 1, 0, 0, 1 } }, adapter.Bar(bar))
+		local icon = Object("Texture", root, { atlas = "Some-Atlas", texture = "atlas:Some-Atlas" })
+		registry[#registry + 1] = icon
+		assert.equals("Some-Atlas", adapter.Texture(icon).atlas)
+		assert.is_nil(adapter.Texture(icon).file)
+		icon.__state.texture = "Interface\\Other"
+		assert.is_nil(adapter.Texture(icon).atlas)
+		assert.equals("Interface\\Other", adapter.Texture(icon).file)
 		local info = adapter.Text(text)
 		assert.equals("40%", info.text)
 		assert.equals(11, info.size)

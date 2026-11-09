@@ -126,6 +126,28 @@ describe("wowproof paint", function()
 		assert.same({ left = 0, top = 0, width = 32, height = 16 }, Paint.SourceRect(nil, 32, 16))
 	end)
 
+	it("draws atlases from their own sub-rectangle and maps later texture coordinates into it", function()
+		local rect = { left = 0.5, right = 0.75, top = 0.25, bottom = 0.5 }
+		local function Atlas(name)
+			if name == "Known-Atlas" then return "data:image/png;base64,AT", 16, 8, rect end
+		end
+		scene.Node("Texture", frame, { points = { { all = true } }, texture = { atlas = "Known-Atlas" } })
+		scene.Node("Texture", frame, {
+			points = { { all = true } }, texture = { atlas = "Known-Atlas", texCoords = { 0.625, 0.75, 0.25, 0.5 } },
+		})
+		scene.Node("Texture", frame, { points = { { all = true } }, texture = { atlas = "Missing-Atlas" } })
+		local svg = Render(nil, { atlas = Atlas })
+		local _, images = svg:gsub("base64,AT", "")
+		assert.equals(1, images)
+		assert.is_true(Has(svg, '<image id="d1" width="16" height="8" preserveAspectRatio="none" href="data:image/png;base64,AT"/>'))
+		assert.is_true(Has(svg, 'viewBox="0 0 16 8"'))
+		assert.is_true(Has(svg, 'viewBox="8 0 8 8"'))
+		assert.is_true(Has(svg, "<title>Missing-Atlas</title>"))
+		assert.same({ 1, 0, 0, 1 }, Paint.AtlasCoords({ 0.75, 0.5, 0.25, 0.5 }, rect))
+		assert.same({ 0, 1, 1, 1, 0, 0, 1, 0 }, Paint.AtlasCoords({ 0.5, 0.5, 0.75, 0.5, 0.5, 0.25, 0.75, 0.25 }, rect))
+		assert.is_nil(Paint.AtlasCoords(nil, rect))
+	end)
+
 	it("maps rotated and tiled texture coordinates through a pattern transform", function()
 		local coords = { 0, 2, 1, 2, 0, 0, 1, 0 }
 		assert.is_true(Paint.NeedsAffine(coords))
