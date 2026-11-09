@@ -25,8 +25,41 @@ build bump happens once for every addon.
 ## Running the specs
 
 ```sh
-luajit spec/bootstrap.lua
+luajit wowtest/cli.lua -j               all specs, one process per CPU
+luajit wowtest/cli.lua runner/          only spec/runner/
+luajit wowtest/cli.lua -t "full health" only tests whose name contains the text
+luajit wowtest/cli.lua --tag shields    only tests tagged #shields
+luajit wowtest/cli.lua --times          also time each spec file
 ```
+
+A run that selects no tests fails. Lua 5.1 works as well as LuaJIT, except for
+specs that load the BLP decoder.
+
+## Configuring wowtest
+
+`wowtest/cli.lua` reads `wut.config.lua` (or `tests/wut.config.lua`, or the
+file given with `--config`) from the directory it runs in:
+
+```lua
+return {
+	specs = {
+		{ dir = "tests/spec/" },
+		{ dir = "MyLib/spec/", prefix = "mylib/" },
+	},
+	pattern = "*_spec.lua",
+	path = { "./tests/?.lua" },
+	setup = "tests/setup.lua",
+	syntax = { include = { "MyAddon" }, exclude = { "*/Libs/*" } },
+}
+```
+
+- `specs`: spec dirs; a `prefix` names the dir's files in output and filters.
+- `pattern`: spec file name pattern.
+- `path`: entries prepended to `package.path`. The library root is always on
+  it, so specs can `require("wowproof")` from a fetched copy.
+- `setup`: a file run once per process before any spec file.
+- `syntax`: Lua files loaded (not run) on every run, to catch syntax errors in
+  code no spec touches.
 
 ## License
 

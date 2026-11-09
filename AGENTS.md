@@ -6,7 +6,8 @@
 - Code is Lua 5.1 compatible. Only `wowproof/blp.lua` (and anything that
   requires it) may use LuaJIT's ffi. Anything MagicMap loads through lupa
   (the API snapshot and its contract) must stay plain Lua 5.1.
-- Run the specs from the repository root with `luajit spec/bootstrap.lua`.
+- Run the specs from the repository root with `luajit wowtest/cli.lua -j`
+  (see `luajit wowtest/cli.lua --help` for filters).
 - Generated output (`.proof/`, `.proof-art/`, `.client-source/`) is never committed.
 - Consumers pin commit SHAs; tag releases with semver (`v0.1.0`) for humans and
   keep changes backwards compatible within a minor version.
