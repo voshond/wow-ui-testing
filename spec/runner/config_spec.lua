@@ -43,6 +43,24 @@ describe("wowtest config", function()
 		assert.equals("find 'A' 'B' -name '*.lua' -not -path '*/Libs/*'", Config.SyntaxCommand(config))
 	end)
 
+	it("validates third-party addons", function()
+		local sha = ("a"):rep(40)
+		local config = Config.Normalize({ specs = "s", addons = {
+			{ name = "Titan", source = "owner/Titan.Panel", ref = sha, toc = "Titan/Titan.toc" },
+			{ name = "Local", source = "/tmp/repo", ref = sha },
+		} })
+		assert.same({ name = "Titan", source = "owner/Titan.Panel", ref = sha, toc = "Titan/Titan.toc" }, config.addons[1])
+		assert.same({}, Config.Normalize({ specs = "s" }).addons)
+		local function Bad(entry) return function() Config.Normalize({ specs = "s", addons = { entry } }) end end
+		assert.has_error(Bad({ name = "a/b", source = "o/r", ref = sha }))
+		assert.has_error(Bad({ name = "A", source = "nope", ref = sha }))
+		assert.has_error(Bad({ name = "A", source = "o/r", ref = "main" }))
+		assert.has_error(Bad({ name = "A", source = "o/r", ref = sha, toc = "../x.toc" }))
+		assert.has_error(function()
+			Config.Normalize({ specs = "s", addons = { { name = "A", source = "o/r", ref = sha }, { name = "A", source = "o/r", ref = sha } } })
+		end)
+	end)
+
 	it("loads the fixture config from disk", function()
 		local config = Config.Load("spec/fixtures/runner/wut.config.lua")
 		assert.equals("*_check.lua", config.pattern)

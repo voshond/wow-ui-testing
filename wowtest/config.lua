@@ -17,6 +17,32 @@ local function List(value, field)
 	return value
 end
 
+local SHA = "^" .. ("%x"):rep(40) .. "$"
+
+function Config.NormalizeAddons(raw)
+	local addons, seen = {}, {}
+	for index, entry in ipairs(List(raw, "addons")) do
+		local label = "config.addons[" .. index .. "]"
+		if type(entry) ~= "table" then error(label .. " must be a table", 0) end
+		if type(entry.name) ~= "string" or not entry.name:match("^[%w_%-%.]+$") then
+			error(label .. " needs a folder-safe name", 0)
+		end
+		if seen[entry.name] then error(label .. " repeats the name " .. entry.name, 0) end
+		local remote = type(entry.source) == "string" and entry.source:match("^[%w_%-%.]+/[%w_%-%.]+$")
+		local localRepo = type(entry.source) == "string" and entry.source:sub(1, 1) == "/"
+		if not remote and not localRepo then error(label .. " source must be owner/repo or an absolute path", 0) end
+		if type(entry.ref) ~= "string" or not entry.ref:match(SHA) then
+			error(label .. " ref must be a full commit SHA", 0)
+		end
+		if entry.toc ~= nil and (type(entry.toc) ~= "string" or not entry.toc:match("%.toc$") or entry.toc:find("%.%.")) then
+			error(label .. " toc must be a .toc path inside the addon", 0)
+		end
+		seen[entry.name] = true
+		addons[#addons + 1] = { name = entry.name, source = entry.source, ref = entry.ref, toc = entry.toc }
+	end
+	return addons
+end
+
 function Config.Normalize(raw)
 	if type(raw) ~= "table" then error("config must return a table", 0) end
 	local specs = {}
@@ -29,6 +55,7 @@ function Config.Normalize(raw)
 	local syntax = raw.syntax or {}
 	return {
 		specs = specs,
+		addons = Config.NormalizeAddons(raw.addons),
 		pattern = raw.pattern or "*_spec.lua",
 		path = List(raw.path, "path"),
 		setup = raw.setup,

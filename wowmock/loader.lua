@@ -84,4 +84,43 @@ function Loader.LoadToc(tocPath, addonName, ns)
 	return ns
 end
 
+-- Third-party addons fetched by scripts/fetch-wut.sh, and the flavour TOC
+-- suffixes the client prefers over a plain Name.toc.
+Loader.addonsDir = ".wut/addons"
+Loader.tocSuffixes = { "_Vanilla", "-Vanilla", "_Classic", "-Classic" }
+
+local function Exists(path)
+	local handle = io.open(path)
+	if handle then handle:close() end
+	return handle ~= nil
+end
+
+local function FirstLine(path)
+	local handle = io.open(path)
+	if not handle then return nil end
+	local line = handle:read("*l")
+	handle:close()
+	return line and line:match("^%s*(.-)%s*$")
+end
+
+-- The TOC the client would load for `base` ("Dir/Name.toc").
+function Loader.ResolveToc(base)
+	local stem = base:gsub("%.toc$", "")
+	for _, suffix in ipairs(Loader.tocSuffixes) do
+		if Exists(stem .. suffix .. ".toc") then return stem .. suffix .. ".toc" end
+	end
+	if Exists(base) then return base end
+	error("no TOC for " .. base, 2)
+end
+
+-- Loads a fetched third-party addon by its wut.config.lua name, through the
+-- TOC its config entry names (or <name>.toc). The addon name passed to its
+-- files is the TOC's folder, like the client's. Returns ns and that name.
+function Loader.LoadAddon(name, ns)
+	local dir = Loader.addonsDir .. "/" .. name
+	local toc = Loader.ResolveToc(dir .. "/" .. (FirstLine(dir .. "/.wut-toc") or name .. ".toc"))
+	local addonName = toc:match("([^/]+)/[^/]+$")
+	return Loader.LoadToc(toc, addonName, ns), addonName
+end
+
 return Loader

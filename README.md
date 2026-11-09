@@ -95,6 +95,63 @@ Mock.RunTimers()
 Regenerate a snapshot from a wow-ui-source checkout with
 `luajit scripts/api-snapshot.lua [source dir] [output]`.
 
+## Adopting in an addon
+
+1. Copy `scripts/fetch-wut.sh` into the addon repo and pin the library:
+
+   ```sh
+   echo "<full commit SHA> # v0.1.0" > .wut-version
+   echo ".wut/" >> .gitignore
+   ```
+
+2. Add `wut.config.lua` (or `tests/wut.config.lua`), see
+   [Configuring wowtest](#configuring-wowtest). Third-party addons the addon
+   runs inside go in `addons`, pinned like the library:
+
+   ```lua
+   addons = {
+   	{ name = "Titan", source = "owner/repo", ref = "<full commit SHA>", toc = "Titan/Titan.toc" },
+   },
+   ```
+
+3. Fetch and run:
+
+   ```sh
+   lib="$(bash scripts/fetch-wut.sh)"
+   luajit "$lib/wowtest/cli.lua" -j
+   ```
+
+   `fetch-wut.sh` puts the library in `.wut/` and each addon in
+   `.wut/addons/<name>/`, and does nothing when they already match their pins.
+   It prints the library folder on stdout (and the `package.path` on stderr).
+   While working on the library, `WUT_DIR=../wow-ui-testing` uses that checkout
+   instead.
+
+4. In specs, load third-party addons before the addon under test:
+
+   ```lua
+   local Loader = require("wowmock.loader")
+   Loader.LoadAddon("Titan")
+   Loader.LoadToc("MyAddon/MyAddon.toc", "MyAddon")
+   ```
+
+   `LoadAddon` loads the entry's `toc` (default `<name>.toc`), preferring the
+   client's flavour TOCs (`Loader.tocSuffixes`: `_Vanilla`, `-Vanilla`,
+   `_Classic`, `-Classic`).
+
+5. In CI, cache `.wut` keyed on the pins, and give the fetch a token that can
+   read this (private) repository:
+
+   ```yaml
+   - uses: actions/cache@v4
+     with:
+       path: .wut
+       key: wut-${{ hashFiles('.wut-version', 'wut.config.lua', 'tests/wut.config.lua') }}
+   - run: bash scripts/fetch-wut.sh
+     env:
+       GITHUB_TOKEN: ${{ secrets.WUT_TOKEN }}
+   ```
+
 ## Client data
 
 `clientdata/forever.json` pins everything taken from the client for one
