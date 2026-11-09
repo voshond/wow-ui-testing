@@ -39,7 +39,8 @@ local function XmlIncludes(path)
 	if not files then
 		local dir = path:match("^(.*)/[^/]+$")
 		local handle = assert(io.open(path))
-		local xml = handle:read("*a")
+		-- The client ignores commented-out entries (Ace3's AceConfig-3.0.xml has one).
+		local xml = handle:read("*a"):gsub("<!%-%-.-%-%->", "")
 		handle:close()
 		files = {}
 		for file in xml:gmatch('<%a+%s+file%s*=%s*["\']([^"\']+)["\']') do

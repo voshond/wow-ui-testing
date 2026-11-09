@@ -23,9 +23,10 @@ local MOCK_ONLY = {
 	["Mock.TickUnitVisibility"] = "test helper",
 }
 
--- Documented, defined by Blizzard's Lua, or an engine function Blizzard calls.
+-- Documented, defined by Blizzard's Lua, an engine function Blizzard calls,
+-- or one of the engine's own Lua additions.
 local function IsClientFunction(name)
-	return API.Function(name) or API.LuaGlobal(name) or API.Called(name)
+	return API.Function(name) or API.LuaGlobal(name) or API.Called(name) or API.EngineLua(name)
 end
 
 describe("Client API contract", function()

@@ -182,8 +182,9 @@ ObjectMT.__index = function(obj, key)
 	if rawget(obj, "__strict") then
 		return nil
 	end
-	-- A heal prediction calculator's values is a data field, never a widget method.
-	if key == "values" then return nil end
+	-- Widget methods are PascalCase; lowercase keys are addon fields
+	-- (frame.anchor, a heal prediction calculator's values), nil until set.
+	if type(key) ~= "string" or key:find("^%l") then return nil end
 	return Wrapped(key)
 end
 
@@ -192,7 +193,14 @@ local function Record(self, name, ...)
 end
 
 function Methods:GetObjectType() return self.__type end
-function Methods:IsObjectType(t) return self.__type == t end
+function Methods:IsObjectType(t)
+	local objectType = self.__type
+	while objectType do
+		if objectType == t then return true end
+		objectType = API.PARENTS[objectType]
+	end
+	return false
+end
 function Methods:GetName() return self.__state.name end
 function Methods:SetMouseClickEnabled(enabled)
 	self.__state.mouseClickEnabled = enabled
@@ -387,7 +395,26 @@ function Methods:SetFixedFrameLevel(fixed) self.__state.fixedLevel = fixed == tr
 function Methods:SetFrameStrata(strata) self.__state.strata = strata end
 function Methods:SetFixedFrameStrata(fixed) self.__state.fixedStrata = fixed == true end
 function Methods:RegisterForDrag(...) Record(self, "RegisterForDrag", ...) end
-function Methods:SetHighlightTexture(texture) self.__state.highlightTexture = texture end
+-- Button texture slots: an asset path fills the slot's own child texture,
+-- a texture object takes the slot over. Get returns the slot's texture.
+for _, slot in ipairs({ "Normal", "Pushed", "Highlight", "Disabled" }) do
+	local key = slot:lower() .. "Texture"
+	Methods["Set" .. slot .. "Texture"] = function(self, asset)
+		if type(asset) == "table" then
+			self.__state[key] = asset
+			return
+		end
+		local texture = self.__state[key]
+		if not texture then
+			texture = Methods.CreateTexture(self, nil, slot == "Highlight" and "HIGHLIGHT" or "ARTWORK")
+			texture:SetAllPoints(self)
+			self.__state[key] = texture
+		end
+		texture:SetTexture(asset)
+	end
+	Methods["Get" .. slot .. "Texture"] = function(self) return self.__state[key] end
+	Methods["Clear" .. slot .. "Texture"] = function(self) self.__state[key] = nil end
+end
 function Methods:LockHighlight() self.__state.highlightLocked = true end
 function Methods:UnlockHighlight() self.__state.highlightLocked = false end
 function Methods:GetCenter()
@@ -943,12 +970,67 @@ end
 
 -- Other API ---------------------------------------------------------------------
 
+-- ColorMixin: methods live on the metatable, so colour globals hold only data.
+local ColorMixin = {}
+function ColorMixin:GetRGB() return self.r, self.g, self.b end
+function ColorMixin:GetRGBA() return self.r, self.g, self.b, self.a end
+function ColorMixin:SetRGBA(nr, ng, nb, na) self.r, self.g, self.b, self.a = nr, ng, nb, na or 1 end
+function ColorMixin:GenerateHexColor()
+	local function Byte(value) return math.floor(value * 255 + 0.5) end
+	return string.format("ff%02x%02x%02x", Byte(self.r), Byte(self.g), Byte(self.b))
+end
+function ColorMixin:WrapTextInColorCode(text) return "|c" .. self:GenerateHexColor() .. text .. "|r" end
+local ColorMT = { __index = ColorMixin }
+
 local function NewColor(r, g, b, a)
-	local color = { r = r, g = g, b = b, a = a or 1 }
-	function color:GetRGB() return self.r, self.g, self.b end
-	function color:GetRGBA() return self.r, self.g, self.b, self.a end
-	function color:SetRGBA(nr, ng, nb, na) self.r, self.g, self.b, self.a = nr, ng, nb, na or 1 end
-	return color
+	return setmetatable({ r = r, g = g, b = b, a = a or 1 }, ColorMT)
+end
+
+-- Global aliases of the Lua libraries: Blizzard_SharedXMLBase/Compat.lua's
+-- and the engine's own (API.ENGINE_LUA).
+local LUA_ALIASES = {
+	abs = math.abs, ceil = math.ceil, floor = math.floor, max = math.max, min = math.min, mod = math.fmod,
+	sqrt = math.sqrt, random = math.random,
+	format = string.format, gmatch = string.gmatch, gsub = string.gsub, strbyte = string.byte,
+	strchar = string.char, strfind = string.find, strlen = string.len, strlower = string.lower,
+	strmatch = string.match, strrep = string.rep, strrev = string.reverse, strsub = string.sub,
+	strupper = string.upper,
+	sort = table.sort, tinsert = table.insert, tremove = table.remove,
+}
+
+-- strsplit(delimiters, text[, pieces]): every character of `delimiters`
+-- splits; at most `pieces` results, the last keeping the rest of the text.
+local function StrSplit(delimiters, text, pieces)
+	local separator = "[" .. delimiters:gsub("[%]%^%-%%]", "%%%0") .. "]"
+	local parts, start = {}, 1
+	while not pieces or #parts < pieces - 1 do
+		local first, last = text:find(separator, start)
+		if not first then break end
+		parts[#parts + 1] = text:sub(start, first - 1)
+		start = last + 1
+	end
+	parts[#parts + 1] = text:sub(start)
+	return unpack(parts, 1, #parts)
+end
+
+local function ToStringAll(...)
+	local strings = {}
+	for i = 1, select("#", ...) do strings[i] = tostring((select(i, ...))) end
+	return unpack(strings, 1, select("#", ...))
+end
+
+-- hooksecurefunc([owner,] name, hook): `hook` runs after the original with
+-- the same arguments; callers still get the original's results.
+local function HookSecureFunc(owner, name, hook)
+	if type(owner) == "string" then owner, name, hook = _G, owner, name end
+	local original = owner[name]
+	assert(type(original) == "function", "hooksecurefunc: " .. tostring(name) .. " is not a function")
+	local function Pack(...) return { n = select("#", ...), ... } end
+	owner[name] = function(...)
+		local results = Pack(original(...))
+		hook(...)
+		return unpack(results, 1, results.n)
+	end
 end
 
 local function NewCurve(isColor)
@@ -1212,9 +1294,23 @@ function Mock.Install()
 	_G.CreateFont = function(name)
 		return NewObject("Font", nil, name)
 	end
-	-- Blizzard_Fonts_Shared/Shared/Fonts.xml: SystemFont_Shadow_Med1 (roman).
-	_G.GameFontNormal = CreateFont("GameFontNormal")
-	GameFontNormal:SetFont([[Fonts\FRIZQT__.TTF]], 12, "")
+	-- Blizzard_Fonts_Shared/Shared/Fonts.xml: the default GameFont set (roman).
+	for _, font in ipairs({
+		{ "GameFontNormal", 12, 1, 0.82, 0 }, { "GameFontNormalSmall", 10, 1, 0.82, 0 },
+		{ "GameFontNormalLarge", 16, 1, 0.82, 0 }, { "GameFontHighlight", 12, 1, 1, 1 },
+		{ "GameFontHighlightSmall", 10, 1, 1, 1 }, { "GameFontHighlightLarge", 16, 1, 1, 1 },
+		{ "GameFontDisable", 12, 0.5, 0.5, 0.5 }, { "GameFontDisableSmall", 10, 0.5, 0.5, 0.5 },
+	}) do
+		local object = CreateFont(font[1])
+		object:SetFont([[Fonts\FRIZQT__.TTF]], font[2], "")
+		object:SetTextColor(font[3], font[4], font[5])
+	end
+	_G.NORMAL_FONT_COLOR = NewColor(1, 0.82, 0)
+	_G.HIGHLIGHT_FONT_COLOR = NewColor(1, 1, 1)
+	_G.NORMAL_FONT_COLOR_CODE = "|cffffd100"
+	_G.HIGHLIGHT_FONT_COLOR_CODE = "|cffffffff"
+	_G.FONT_COLOR_CODE_CLOSE = "|r"
+	_G.WorldFrame = NewObject("Frame", nil, "WorldFrame")
 	_G.UIParent = NewObject("Frame", nil, "UIParent")
 	_G.Minimap = NewObject("Frame", UIParent, "Minimap")
 	Minimap:SetSize(140, 140)
@@ -1434,11 +1530,29 @@ function Mock.Install()
 	end
 	_G.strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 	_G.strlenutf8 = function(s) return #s end
-	_G.tinsert = table.insert
 	_G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 	-- The client's table library has it too.
 	table.wipe = _G.wipe
+	for name, fn in pairs(LUA_ALIASES) do _G[name] = fn end
+	_G.strsplit = StrSplit
+	_G.strjoin = function(delimiter, ...) return table.concat({ ... }, delimiter) end
+	_G.strconcat = function(...) return table.concat({ ... }) end
+	_G.tostringall = ToStringAll
+	_G.hooksecurefunc = HookSecureFunc
+	_G.securecall = function(fn, ...)
+		if type(fn) == "string" then fn = _G[fn] end
+		return fn(...)
+	end
 	_G.securecallfunction = function(fn, ...) return fn(...) end
+	_G.issecure = function() return untainted > 0 end
+	-- Sounds played, in order: { soundKitID, channel }.
+	Mock.sounds = {}
+	_G.PlaySound = function(soundKitID, channel)
+		Mock.sounds[#Mock.sounds + 1] = { soundKitID, channel }
+		return true, #Mock.sounds
+	end
+	Mock.cursor = { x = 0, y = 0 }
+	_G.GetCursorPosition = function() return Mock.cursor.x, Mock.cursor.y end
 	_G.geterrorhandler = function() return error end
 	_G.INTERRUPTED = "Interrupted"
 	_G.UnitFrame_OnEnter = function() end

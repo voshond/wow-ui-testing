@@ -68,6 +68,43 @@ API.TYPES = {
 	UnitHealPredictionCalculator = { "UnitHealPredictionCalculatorAPI" },
 }
 
+-- Each type's parent in the client's widget hierarchy (IsObjectType). Types
+-- whose API chain has no SimpleObjectAPI (Font, data objects) have none.
+API.PARENTS = {
+	ScriptRegion = "Object",
+	Region = "ScriptRegion",
+	TextureBase = "Region",
+	Texture = "TextureBase",
+	Line = "TextureBase",
+	FontString = "Region",
+	Frame = "Region",
+	EventFrame = "Frame",
+	AuraContainer = "Frame",
+	Button = "Frame",
+	DropdownButton = "Button",
+	CheckButton = "Button",
+	StatusBar = "Frame",
+	Slider = "Frame",
+	EditBox = "Frame",
+	Cooldown = "Frame",
+	Model = "Frame",
+	PlayerModel = "Model",
+	GameTooltip = "Frame",
+	AnimationGroup = "Object",
+	Animation = "Object",
+	Alpha = "Animation",
+	FlipBook = "Animation",
+}
+
+-- The client's own Lua additions: C functions and aliases the engine puts in
+-- the global environment. Neither Blizzard's API documentation nor its Lua
+-- source defines them, so the snapshot cannot list them.
+API.ENGINE_LUA = {}
+for name in ([[strbyte strchar strfind strlen strlower strmatch strrep strrev strsub strupper strsplit strjoin
+	strconcat tostringall tremove mod sqrt random hooksecurefunc securecall issecure PlaySound]]):gmatch("%S+") do
+	API.ENGINE_LUA[name] = true
+end
+
 local resolved = {}
 
 -- Switches the contract to another snapshot file (another client build).
@@ -118,6 +155,11 @@ end
 -- A global or table field defined in Blizzard's Lua, or nil.
 function API.LuaGlobal(name)
 	return API.Snapshot().lua.globals[name]
+end
+
+-- A client Lua addition the engine defines (API.ENGINE_LUA), or nil.
+function API.EngineLua(name)
+	return API.ENGINE_LUA[name]
 end
 
 -- Undocumented engine functions (name) and methods (":name") that Blizzard
