@@ -53,6 +53,38 @@ fetch_tree() {
 
 current_ref() { cat "$1/.wut-ref" 2>/dev/null || true; }
 
+# Several fetches may run at once (parallel test runners): .wut.lock holds the
+# owner's pid, and each run stages its downloads in its own .wut.new.XXXXXX.
+lock_dir="$wut_dir.lock"
+lock_wait="${WUT_LOCK_WAIT:-600}"
+locked=""
+staging_root=""
+
+release() {
+	if [[ -n "$staging_root" ]]; then rm -rf -- "$staging_root"; fi
+	if [[ -n "$locked" ]]; then rm -rf -- "$lock_dir"; fi
+}
+trap release EXIT
+
+lock() {
+	local waited=0 owner
+	until mkdir "$lock_dir" 2>/dev/null; do
+		owner="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+		if [[ -n "$owner" ]] && ! kill -0 "$owner" 2>/dev/null; then
+			say "removing the stale lock of process $owner"
+			rm -rf -- "$lock_dir"
+			continue
+		fi
+		if (( waited == 0 )); then say "waiting for another fetch to finish"; fi
+		if (( waited >= lock_wait * 5 )); then die "$lock_dir is still held after ${lock_wait}s; remove it if no fetch is running"; fi
+		sleep 0.2
+		waited=$((waited + 1))
+	done
+	locked=1
+	printf '%s\n' "$$" > "$lock_dir/pid"
+	staging_root="$(mktemp -d "$wut_dir.new.XXXXXX")"
+}
+
 sha256() {
 	if command -v sha256sum >/dev/null; then sha256sum "$1" | awk '{ print $1 }'; else shasum -a 256 "$1" | awk '{ print $1 }'; fi
 }
@@ -74,6 +106,8 @@ fetch_release() {
 	printf '%s\n' "$digest" > "$staging/.wut-ref"
 }
 
+lock
+
 if [[ -n "${WUT_DIR:-}" ]]; then
 	lib="$(cd "$WUT_DIR" && pwd)"
 	say "using the local library in $lib (WUT_DIR)"
@@ -84,11 +118,11 @@ else
 	if [[ "$(current_ref "$wut_dir")" == "$sha" ]]; then
 		say "library $sha already in .wut"
 	else
-		rm -rf -- "$wut_dir.new"
-		fetch_tree "$library_source" "$sha" "$wut_dir.new"
-		if [[ -d "$wut_dir/addons" ]]; then mv "$wut_dir/addons" "$wut_dir.new/addons"; fi
+		staging="$staging_root/library"
+		fetch_tree "$library_source" "$sha" "$staging"
+		if [[ -d "$wut_dir/addons" ]]; then mv "$wut_dir/addons" "$staging/addons"; fi
 		rm -rf -- "$wut_dir"
-		mv "$wut_dir.new" "$wut_dir"
+		mv "$staging" "$wut_dir"
 		say "fetched library $sha into .wut"
 	fi
 	lib="$wut_dir"
@@ -118,14 +152,15 @@ while IFS=$'\t' read -r name source ref toc; do
 	if [[ "$(current_ref "$destination")" == "$ref" ]]; then
 		say "addon $name $ref already in .wut/addons"
 	else
-		rm -rf -- "$destination.new"
+		staging="$staging_root/addon-$name"
 		if [[ "$source" == https://* || "$source" == file://* ]]; then
-			fetch_release "$name" "$source" "$ref" "$destination.new"
+			fetch_release "$name" "$source" "$ref" "$staging"
 		else
-			fetch_tree "$source" "$ref" "$destination.new"
+			fetch_tree "$source" "$ref" "$staging"
 		fi
+		mkdir -p "$wut_dir/addons"
 		rm -rf -- "$destination"
-		mv "$destination.new" "$destination"
+		mv "$staging" "$destination"
 		say "fetched addon $name $ref into .wut/addons"
 	fi
 	if [[ -n "$toc" ]]; then printf '%s\n' "$toc" > "$destination/.wut-toc"; else rm -f -- "$destination/.wut-toc"; fi
