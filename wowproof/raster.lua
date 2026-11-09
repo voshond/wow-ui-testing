@@ -75,6 +75,11 @@ end
 local PNG_OUTPUT = "-define png:exclude-chunks=date,time"
 Raster.PNG_OUTPUT = PNG_OUTPUT
 
+local function StripWrite(target)
+	local data = Raster.Read(target)
+	if data then Raster.Write(target, Raster.StripPng(data)) end
+end
+
 function Raster.ToPng(file, cacheDir)
 	if file:lower():match("%.png$") then return Raster.Exists(file) and file or nil end
 	local tool = Raster.ImageTool()
@@ -85,6 +90,7 @@ function Raster.ToPng(file, cacheDir)
 	if not Run(string.format("%s %s %s %s >/dev/null 2>&1", tool, Quote(file), PNG_OUTPUT, Quote(target))) then
 		return nil
 	end
+	StripWrite(target)
 	return target
 end
 
@@ -96,7 +102,9 @@ function Raster.RawToPng(rgba, width, height, target)
 	local ok = Run(string.format("%s -size %dx%d -depth 8 %s %s %s >/dev/null 2>&1",
 		tool, width, height, Quote("rgba:" .. raw), PNG_OUTPUT, Quote(target)))
 	os.remove(raw)
-	return ok and target or nil
+	if not ok then return nil end
+	StripWrite(target)
+	return target
 end
 
 function Raster.Crop(png, rect, cacheDir)
@@ -110,6 +118,7 @@ function Raster.Crop(png, rect, cacheDir)
 		Quote(target))) then
 		return nil
 	end
+	StripWrite(target)
 	return target
 end
 
