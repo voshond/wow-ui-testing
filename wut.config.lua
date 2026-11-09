@@ -3,5 +3,8 @@ return {
 		{ dir = "spec/" },
 		{ dir = "wowproof/spec/", prefix = "wowproof/" },
 	},
-	syntax = { include = { "wowproof", "wowtest", "spec" }, exclude = { "spec/fixtures/runner/broken/*" } },
+	syntax = {
+		include = { "wowproof", "wowtest", "wowmock", "scripts", "spec" },
+		exclude = { "spec/fixtures/runner/broken/*", "wowmock/snapshots/*" },
+	},
 }

@@ -61,6 +61,40 @@ return {
 - `syntax`: Lua files loaded (not run) on every run, to catch syntax errors in
   code no spec touches.
 
+## Using wowmock
+
+```lua
+local Mock = require("wowmock")
+local Loader = require("wowmock.loader")
+
+Mock.Extend("MyAddon", {
+	globals = { "MyAddon", "MyAddonDB" },
+	install = function(mock) _G.LibStub = MyLibStubStandIn end,
+	installUI = function(mock) end,
+})
+Mock.Install()
+Mock.InstallUI()
+Loader.Skip({ "Libs/SomeLib/" })
+local ns = Loader.LoadToc("MyAddon/MyAddon.toc", "MyAddon")
+Mock.FireEvent("ADDON_LOADED", "MyAddon")
+Mock.RunTimers()
+```
+
+- `Mock.Install()` resets the client; `Mock.InstallUI()` adds client UI and a
+  unit API that returns secrets. Extensions are kept by name: their `globals`
+  are cleared on every install and their steps run before the API is enforced.
+- Every widget method and documented global is checked against the snapshot
+  in `wowmock/snapshots/` (`Mock.API`): undocumented methods, missing
+  arguments, refused secrets and protected calls in combat raise errors.
+  `Mock.API.UseSnapshot(path)` switches builds.
+- Widgets keep their state in `obj.__state` and record unimplemented calls in
+  `obj.__calls`; `wowproof.adapters.mock_state` renders them.
+- `wowmock/api.lua` is plain Lua 5.1 without ffi, so other Lua hosts can
+  `dofile` it and check their own mocks against the same snapshot.
+
+Regenerate a snapshot from a wow-ui-source checkout with
+`luajit scripts/api-snapshot.lua [source dir] [output]`.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE).
