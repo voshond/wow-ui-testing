@@ -70,6 +70,11 @@ function Raster.ImageTool()
 	return nil
 end
 
+-- ImageMagick stamps PNGs with tIME and date:create/modify/timestamp text
+-- chunks; leaving them out keeps inlined images byte-reproducible.
+local PNG_OUTPUT = "-define png:exclude-chunks=date,time"
+Raster.PNG_OUTPUT = PNG_OUTPUT
+
 function Raster.ToPng(file, cacheDir)
 	if file:lower():match("%.png$") then return Raster.Exists(file) and file or nil end
 	local tool = Raster.ImageTool()
@@ -77,7 +82,9 @@ function Raster.ToPng(file, cacheDir)
 	Raster.MakeDir(cacheDir)
 	local target = cacheDir .. "/" .. CacheName(file)
 	if Raster.Exists(target) then return target end
-	if not Run(tool .. " " .. Quote(file) .. " " .. Quote(target) .. " >/dev/null 2>&1") then return nil end
+	if not Run(string.format("%s %s %s %s >/dev/null 2>&1", tool, Quote(file), PNG_OUTPUT, Quote(target))) then
+		return nil
+	end
 	return target
 end
 
@@ -86,8 +93,8 @@ function Raster.RawToPng(rgba, width, height, target)
 	if not tool then return nil end
 	local raw = target .. ".rgba"
 	Raster.Write(raw, rgba)
-	local ok = Run(string.format("%s -size %dx%d -depth 8 %s %s >/dev/null 2>&1",
-		tool, width, height, Quote("rgba:" .. raw), Quote(target)))
+	local ok = Run(string.format("%s -size %dx%d -depth 8 %s %s %s >/dev/null 2>&1",
+		tool, width, height, Quote("rgba:" .. raw), PNG_OUTPUT, Quote(target)))
 	os.remove(raw)
 	return ok and target or nil
 end
@@ -99,7 +106,8 @@ function Raster.Crop(png, rect, cacheDir)
 	local geometry = string.format("%dx%d+%d+%d", rect.width, rect.height, rect.left, rect.top)
 	local target = cacheDir .. "/" .. CacheName(png .. "@" .. geometry)
 	if Raster.Exists(target) then return target end
-	if not Run(string.format("%s %s -crop %s +repage %s >/dev/null 2>&1", tool, Quote(png), geometry, Quote(target))) then
+	if not Run(string.format("%s %s -crop %s +repage %s %s >/dev/null 2>&1", tool, Quote(png), geometry, PNG_OUTPUT,
+		Quote(target))) then
 		return nil
 	end
 	return target
