@@ -62,6 +62,7 @@ the adapter's job.
 | `Text(r)` | nil, or for font strings `{ text, font, size, flags, color, justifyH, justifyV }` |
 | `FillOf(r)` *(optional)* | the status bar whose fill texture `r` is; the fill then gets its rect from the bar value |
 | `ClipsChildren(r)` *(optional)* | whether the frame clips its children |
+| `Model(r)` *(optional)* | nil, or for model frames (`Scene.MODEL_TYPES`) `{ unit, file, displayId, creatureId, zoom, modelAlpha, desaturation }`; all sources nil once cleared |
 
 `wowproof.scene` validates adapters and lists the strata and draw-layer order.
 `wowproof.adapters.mock_state` covers mocks that keep widget state in
@@ -80,6 +81,11 @@ the adapter's job.
     texture coordinates (crops, mirrors, rotations and tiling beyond 0–1, such as backdrop edges)
   - atlases, cropped to their sub-rectangle; later texture coordinates map into it
   - anything else as a dashed placeholder titled with its path or atlas name
+- **Models:** `PlayerModel` and the other model frames through `assets.models(info)`, which gets
+  the adapter's `Model(r)` and returns a texture path (resolved through `assets.textures`) or
+  `{ file, texCoords }`. The image covers the frame (centre-cropped to its aspect) at the frame's
+  alpha times the model alpha, desaturated by the model's desaturation. Without art it's a dashed
+  placeholder titled `model: <unit>`; a cleared model draws nothing.
 - **Status bars and text:** status bar fills by value, and font strings with justification, outline and `|c` colour codes.
 
 Rendering is deterministic: the same scene gives the same SVG.
@@ -125,6 +131,15 @@ assets.atlases = require("wowproof.sources.atlas_table")(pinnedAtlases)
 ```
 
 Tiling atlases draw once, not repeated, and flipbooks show their whole sheet.
+
+Models can't be rendered without the client, so a host maps them to stand-in
+art, for example a race portrait for player units:
+
+```lua
+assets.models = function(info)
+	if info.unit then return { file = "Interface\\CharacterFrame\\TemporaryPortrait-Male-Human", texCoords = { 0.14, 0.86, 0.14, 0.86 } } end
+end
+```
 
 ## Tests
 

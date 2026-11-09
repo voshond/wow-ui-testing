@@ -88,4 +88,26 @@ describe("wowproof package", function()
 		assert.equals("RIGHT", info.justifyH)
 		assert.equals(4, adapter.Order(text))
 	end)
+
+	it("replays model calls through the mock_state adapter", function()
+		local secret = {}
+		local function Secret(value) return setmetatable({ value = value }, secret) end
+		local model = { __type = "PlayerModel", __state = { kids = {} }, __calls = {} }
+		local adapter = MockState({
+			isSecret = function(value) return getmetatable(value) == secret end,
+			reveal = function(value) return value.value end,
+		})
+		assert.same({ zoom = 0, desaturation = 0, modelAlpha = 1 }, adapter.Model(model))
+		model.__calls = {
+			{ "SetModel", "Interface\\Buttons\\TalkToMeQuestionMark.m2" }, { "SetPortraitZoom", 0 },
+			{ "ClearModel" }, { "SetUnit", "target" }, { "SetPortraitZoom", 1 }, { "SetDesaturation", Secret(0.5) },
+		}
+		model.__state.modelAlpha = Secret(0.4)
+		assert.same({ unit = "target", zoom = 1, desaturation = 0.5, modelAlpha = 0.4 }, adapter.Model(model))
+		model.__calls[#model.__calls + 1] = { "SetDisplayInfo", 1234 }
+		assert.same({ displayId = 1234, zoom = 1, desaturation = 0.5, modelAlpha = 0.4 }, adapter.Model(model))
+		model.__calls[#model.__calls + 1] = { "ClearModel" }
+		assert.is_nil(adapter.Model(model).displayId)
+		assert.is_nil(adapter.Model({ __type = "Frame", __state = {}, __calls = {} }))
+	end)
 end)

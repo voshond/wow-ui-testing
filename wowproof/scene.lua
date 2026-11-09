@@ -7,7 +7,7 @@ Scene.REQUIRED = {
 	"Texture", "Bar", "Text",
 }
 
-Scene.OPTIONAL = { "FillOf", "ClipsChildren" }
+Scene.OPTIONAL = { "FillOf", "ClipsChildren", "Model" }
 
 Scene.SOLID_FILES = {
 	["interface\\buttons\\white8x8"] = true,
@@ -20,6 +20,12 @@ function Scene.IsSolidFile(file)
 end
 
 Scene.REGION_TYPES ={ Texture = true, FontString = true, Line = true, MaskTexture = true }
+
+Scene.MODEL_TYPES = { Model = true, PlayerModel = true, DressUpModel = true, CinematicModel = true, TabardModel = true }
+
+function Scene.IsModel(adapter, region)
+	return Scene.MODEL_TYPES[adapter.Type(region)] == true
+end
 
 Scene.STRATA = {
 	"WORLD", "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP",

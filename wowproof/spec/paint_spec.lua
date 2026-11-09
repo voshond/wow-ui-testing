@@ -213,6 +213,42 @@ describe("wowproof paint", function()
 		assert.is_true(Has(svg, '<rect x="35" y="18" width="4" height="4" fill="rgb(255,0,0)"'))
 	end)
 
+	it("draws models through the model hook, cropped to cover, with model alpha and desaturation", function()
+		scene.adapter.Model = function(node) return node.model end
+		local model = scene.Node("PlayerModel", frame, {
+			points = { { all = true } }, alpha = 0.5, model = { unit = "target", zoom = 1, modelAlpha = 0.5, desaturation = 0.25 },
+		})
+		local asked
+		local function Portrait(info)
+			asked = info
+			return { file = "Own\\Glow.tga", texCoords = { 0, 1, 0, 0.5 } }
+		end
+		local svg = Render(nil, { image = Image, model = Portrait })
+		assert.equals(model.model, asked)
+		assert.is_true(Has(svg, 'href="data:image/png;base64,AA"'))
+		assert.is_true(Has(svg, '<feColorMatrix type="saturate" values="0.75"/>'))
+		assert.is_true(Has(svg, '<g opacity="0.25" filter="url(#d2)">'))
+		assert.is_true(Has(svg, 'viewBox="0 4.8 32 6.4"'))
+		assert.same({ left = 0, top = 12, width = 32, height = 8 },
+			Paint.CoverRect({ left = 0, top = 0, width = 32, height = 32 }, { left = 0, top = 0, width = 100, height = 25 }))
+	end)
+
+	it("draws models without art as placeholders titled with their unit, and cleared models as nothing", function()
+		scene.adapter.Model = function(node) return node.model end
+		local model = scene.Node("PlayerModel", frame, { points = { { all = true } }, model = { unit = "focus" } })
+		local svg = Render(nil, { image = Image, model = function() return "Interface\\Missing" end })
+		assert.is_true(Has(svg, "<title>model: focus</title>"))
+		assert.is_true(Has(Render(), "<title>model: focus</title>"))
+		model.model = { displayId = 42 }
+		assert.is_true(Has(Render(), "<title>model: display 42</title>"))
+		model.model = { modelAlpha = 1 }
+		assert.is_false(Has(Render(), "<title>"))
+		model.model = { unit = "focus", modelAlpha = 0 }
+		assert.is_false(Has(Render(), "<title>"))
+		scene.adapter.Model = nil
+		assert.is_true(Has(Render(), "<title>model: PlayerModel</title>"))
+	end)
+
 	it("renders the same scene to the same SVG", function()
 		scene.Node("StatusBar", frame, { points = { { all = true } }, bar = { min = 0, max = 3, value = 1 } })
 		scene.Node("FontString", frame, { points = { { point = "CENTER" } }, text = { text = "1/3" } })

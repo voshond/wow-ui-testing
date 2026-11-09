@@ -354,11 +354,59 @@ function Context:DrawTexture(region, rect, alpha)
 		self:Emit(string.format('<rect %s %s%s/>', RectAttributes(rect), Fill(texture.vertexColor, alpha), blend))
 		return
 	end
-	if texture.file or texture.atlas then
-		self:Emit(string.format('<rect %s %s stroke="%s" stroke-opacity="0.5" stroke-dasharray="2 2"><title>%s</title></rect>',
-			RectAttributes(rect), Fill(PLACEHOLDER_COLOR, alpha), Rgb(PLACEHOLDER_COLOR),
-			Escape(texture.file or texture.atlas)))
+	if texture.file or texture.atlas then self:DrawPlaceholder(rect, alpha, texture.file or texture.atlas) end
+end
+
+function Context:DrawPlaceholder(rect, alpha, title)
+	self:Emit(string.format('<rect %s %s stroke="%s" stroke-opacity="0.5" stroke-dasharray="2 2"><title>%s</title></rect>',
+		RectAttributes(rect), Fill(PLACEHOLDER_COLOR, alpha), Rgb(PLACEHOLDER_COLOR), Escape(title)))
+end
+
+local function CoverRect(source, target)
+	if source.width <= 0 or source.height <= 0 or target.width <= 0 or target.height <= 0 then return source end
+	local aspect = target.width / target.height
+	if source.width / source.height > aspect then
+		local width = source.height * aspect
+		return { left = source.left + (source.width - width) / 2, top = source.top, width = width, height = source.height }
 	end
+	local height = source.width / aspect
+	return { left = source.left, top = source.top + (source.height - height) / 2, width = source.width, height = height }
+end
+Paint.CoverRect = CoverRect
+
+local function ModelSubject(info)
+	return info.unit or info.file or (info.displayId and "display " .. info.displayId)
+		or (info.creatureId and "creature " .. info.creatureId)
+end
+Paint.ModelSubject = ModelSubject
+
+function Context:DrawModel(region, rect, alpha)
+	local info = self.adapter.Model and self.adapter.Model(region)
+	if not info then
+		self:DrawPlaceholder(rect, alpha, "model: " .. self.adapter.Type(region))
+		return
+	end
+	local subject = ModelSubject(info)
+	alpha = alpha * Clamp(info.modelAlpha or 1)
+	if not subject or alpha <= 0 then return end
+	local art = self.model(info)
+	if type(art) == "string" then art = { file = art } end
+	local image = art and art.file and self:ImageDef(art.file, function() return self.image(art.file) end)
+	if not image or not image.width then
+		self:DrawPlaceholder(rect, alpha, "model: " .. subject)
+		return
+	end
+	local filter = ""
+	local desaturation = Clamp(info.desaturation or 0)
+	if desaturation > 0 then
+		local id = self:Define(string.format(
+			'<filter id="{id}" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="%s"/></filter>',
+			Number(1 - desaturation)))
+		filter = string.format(' filter="url(#%s)"', id)
+	end
+	self:Emit(string.format('<g opacity="%s"%s>', Number(alpha), filter))
+	self:DrawImagePiece(image, rect, CoverRect(SourceRect(art.texCoords, image.width, image.height), rect))
+	self:Emit("</g>")
 end
 
 function Context:DrawBar(region, alpha)
@@ -438,6 +486,7 @@ function Paint.Render(options)
 		image = options.image or function() return nil end,
 		atlas = options.atlas or function() return nil end,
 		font = options.font or function() return nil end,
+		model = options.model or function() return nil end,
 		defs = {},
 		body = {},
 		images = {},
@@ -472,6 +521,8 @@ function Paint.Render(options)
 			context:DrawTexture(entry.region, entry.rect, entry.alpha)
 		elseif kind == "FontString" then
 			context:DrawText(entry.region, entry.rect, entry.alpha)
+		elseif Scene.IsModel(adapter, entry.region) then
+			context:DrawModel(entry.region, entry.rect, entry.alpha)
 		elseif not adapter.FillOf and not Scene.IsRegion(adapter, entry.region) then
 			context:DrawBar(entry.region, entry.alpha)
 		end

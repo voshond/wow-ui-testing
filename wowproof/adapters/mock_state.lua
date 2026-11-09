@@ -1,3 +1,5 @@
+local Scene = require("wowproof.scene")
+
 return function(options)
 	options = options or {}
 	local isSecret = options.isSecret or function() return false end
@@ -172,6 +174,28 @@ return function(options)
 			color = Color(state.color) or Color(fill.vertexColor) or Color(fill.colorTexture),
 			file = state.texture,
 		}
+	end
+
+	local MODEL_SOURCES = { SetUnit = "unit", SetModel = "file", SetDisplayInfo = "displayId", SetCreature = "creatureId" }
+
+	function adapter.Model(region)
+		if not Scene.IsModel(adapter, region) then return nil end
+		local state = State(region)
+		local info = { zoom = 0, desaturation = 0 }
+		for _, call in ipairs(rawget(region, "__calls") or {}) do
+			local name = call[1]
+			if name == "ClearModel" or MODEL_SOURCES[name] then
+				info.unit, info.file, info.displayId, info.creatureId = nil, nil, nil, nil
+				if MODEL_SOURCES[name] then info[MODEL_SOURCES[name]] = Plain(call[2]) end
+			elseif name == "SetPortraitZoom" then
+				info.zoom = Plain(call[2])
+			elseif name == "SetDesaturation" then
+				info.desaturation = Plain(call[2])
+			end
+		end
+		local modelAlpha = Plain(state.modelAlpha)
+		info.modelAlpha = modelAlpha == nil and 1 or modelAlpha
+		return info
 	end
 
 	local function FontObject(value)

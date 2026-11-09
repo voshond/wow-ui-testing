@@ -106,6 +106,7 @@ function Proof:Render(region, options)
 		image = function(file) return self:Image(file) end,
 		atlas = function(name) return self:Atlas(name) end,
 		font = function(file) return self:Font(file) end,
+		model = function(info) return self.assets.models and self.assets.models(info) end,
 	})
 end
 
