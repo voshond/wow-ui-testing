@@ -1,0 +1,33 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="Core.lua"/>
+	<Frame name="XmlAddonFrame" parent="UIParent" frameStrata="DIALOG">
+		<Size x="200" y="50"/>
+		<Anchors>
+			<Anchor point="TOPLEFT">
+				<Offset x="10" y="-20"/>
+			</Anchor>
+		</Anchors>
+		<KeyValues>
+			<KeyValue key="kind" value="panel"/>
+			<KeyValue key="limit" value="3" type="number"/>
+		</KeyValues>
+		<Frames>
+			<Button name="$parentButton" parentKey="Button" inherits="XmlTextTemplate">
+				<Anchors>
+					<Anchor point="RIGHT" relativeTo="$parent"/>
+				</Anchors>
+				<Scripts>
+					<OnLoad inherit="append">
+						XmlAddonLog("child OnLoad");
+					</OnLoad>
+				</Scripts>
+			</Button>
+		</Frames>
+		<Scripts>
+			<OnLoad>
+				if self.limit &lt; 5 then XmlAddonLog("parent OnLoad"); end
+			</OnLoad>
+			<OnEvent function="XmlAddon_OnEvent"/>
+		</Scripts>
+	</Frame>
+</Ui>

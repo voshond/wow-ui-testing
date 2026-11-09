@@ -218,6 +218,9 @@ function Methods:SetScript(name, fn)
 	self.__state.scripts[name] = fn
 end
 function Methods:GetScript(name) return self.__state.scripts[name] end
+-- Whether the widget type supports a handler: the mock lets every type take
+-- any On* script, so any handler name answers true.
+function Methods:HasScript(name) return type(name) == "string" and name:match("^On%u") ~= nil end
 function Methods:HookScript(name, fn)
 	local previous = self.__state.scripts[name]
 	self.__state.scripts[name] = function(...)
@@ -341,10 +344,21 @@ function Methods:SetScale(scale) self.__state.scale = scale end
 function Methods:GetScale() return self.__state.scale or 1 end
 function Methods:GetEffectiveScale() return self.__state.scale or 1 end
 
+-- Like the client, anchors accept a region's global name for the relative region.
+local function Relative(relativeTo)
+	if type(relativeTo) ~= "string" then return relativeTo end
+	local region = rawget(_G, relativeTo)
+	if type(region) ~= "table" or not rawget(region, "__state") then
+		error("SetPoint: unknown region '" .. relativeTo .. "'", 3)
+	end
+	return region
+end
+
 function Methods:SetPoint(point, relativeTo, relativePoint, x, y)
 	if type(relativeTo) == "number" then
 		relativeTo, relativePoint, x, y = nil, point, relativeTo, relativePoint
 	end
+	relativeTo = Relative(relativeTo)
 	CheckLayoutAspect(self, relativeTo, "SetPoint")
 	local points = self.__state.points
 	for i, p in ipairs(points) do
@@ -356,6 +370,7 @@ function Methods:SetPoint(point, relativeTo, relativePoint, x, y)
 	points[#points + 1] = { point, relativeTo, relativePoint or point, x or 0, y or 0 }
 end
 function Methods:SetAllPoints(relativeTo)
+	relativeTo = Relative(relativeTo)
 	CheckLayoutAspect(self, relativeTo, "SetAllPoints")
 	self.__state.points = { { "ALL", relativeTo } }
 end
@@ -415,12 +430,54 @@ for _, slot in ipairs({ "Normal", "Pushed", "Highlight", "Disabled" }) do
 	Methods["Get" .. slot .. "Texture"] = function(self) return self.__state[key] end
 	Methods["Clear" .. slot .. "Texture"] = function(self) self.__state[key] = nil end
 end
+function Methods:SetFontString(fontString) self.__state.fontString = fontString end
+function Methods:GetFontString() return self.__state.fontString end
 function Methods:LockHighlight() self.__state.highlightLocked = true end
 function Methods:UnlockHighlight() self.__state.highlightLocked = false end
+-- Screen geometry from the anchors, through wowproof's layout, in the
+-- region's own scale. The client measures from the bottom left of the screen
+-- (UIParent's size, 1920x1080 while it has none); nil while unanchored.
+Mock.SCREEN = { width = 1920, height = 1080 }
+local function ScreenRect(region)
+	local Layout = require("wowproof.layout")
+	local adapter = require("wowproof.adapters.mock_state")({
+		isSecret = Mock.IsSecret,
+		reveal = function(value) return value.secretValue end,
+		objects = function() return registry end,
+		globals = _G,
+	})
+	local width, height = UIParent.__state.width, UIParent.__state.height
+	if width == 0 or height == 0 then width, height = Mock.SCREEN.width, Mock.SCREEN.height end
+	local layout = Layout.New(adapter, { width = width, height = height })
+	local rect = layout:Rect(region)
+	if not rect then return nil end
+	local scale = layout:Scale(region)
+	return rect.left / scale, (height - rect.top - rect.height) / scale, rect.width / scale, rect.height / scale
+end
+
+function Methods:GetRect() return ScreenRect(self) end
+function Methods:GetLeft()
+	local left = ScreenRect(self)
+	return left
+end
+function Methods:GetRight()
+	local left, _, width = ScreenRect(self)
+	return left and left + width
+end
+function Methods:GetBottom()
+	local _, bottom = ScreenRect(self)
+	return bottom
+end
+function Methods:GetTop()
+	local _, bottom, _, height = ScreenRect(self)
+	return bottom and bottom + height
+end
+-- Specs may pin a centre (__state.center); otherwise it comes from the anchors.
 function Methods:GetCenter()
 	local center = self.__state.center
-	if not center then return nil end
-	return center[1], center[2]
+	if center then return center[1], center[2] end
+	local left, bottom, width, height = ScreenRect(self)
+	if left then return left + width / 2, bottom + height / 2 end
 end
 function Methods:IsProtected() return self.__state.protected == true end
 function Methods:SetAttribute(name, value)
@@ -813,6 +870,8 @@ function Methods:UnregisterAllEvents() self.__state.events = {} end
 function Methods:IsEventRegistered(event) return self.__state.events[event] == true end
 
 function Mock.FireEvent(event, ...)
+	-- IsLoggedIn turns true as PLAYER_LOGIN fires.
+	if event == "PLAYER_LOGIN" then Mock.loggedIn = true end
 	for _, obj in ipairs(registry) do
 		if obj.__state.events[event] and obj.__state.scripts.OnEvent then
 			obj.__state.scripts.OnEvent(obj, event, ...)
@@ -979,12 +1038,28 @@ function ColorMixin:GenerateHexColor()
 	local function Byte(value) return math.floor(value * 255 + 0.5) end
 	return string.format("ff%02x%02x%02x", Byte(self.r), Byte(self.g), Byte(self.b))
 end
-function ColorMixin:WrapTextInColorCode(text) return "|c" .. self:GenerateHexColor() .. text .. "|r" end
+function ColorMixin:GenerateHexColorMarkup() return "|c" .. self:GenerateHexColor() end
+function ColorMixin:WrapTextInColorCode(text) return self:GenerateHexColorMarkup() .. text .. "|r" end
 local ColorMT = { __index = ColorMixin }
 
 local function NewColor(r, g, b, a)
 	return setmetatable({ r = r, g = g, b = b, a = a or 1 }, ColorMT)
 end
+
+-- C_UIColor.GetColors: { baseTag, red, green, blue } in bytes, the values
+-- behind the client's long-standing *_FONT_COLOR_CODE strings.
+Mock.UI_COLORS = {
+	{ "NORMAL_FONT_COLOR", 255, 210, 0 },
+	{ "HIGHLIGHT_FONT_COLOR", 255, 255, 255 },
+	{ "RED_FONT_COLOR", 255, 32, 32 },
+	{ "GREEN_FONT_COLOR", 32, 255, 32 },
+	{ "GRAY_FONT_COLOR", 128, 128, 128 },
+	{ "DISABLED_FONT_COLOR", 128, 128, 128 },
+	{ "YELLOW_FONT_COLOR", 255, 255, 0 },
+	{ "LIGHTYELLOW_FONT_COLOR", 255, 255, 154 },
+	{ "ORANGE_FONT_COLOR", 255, 127, 63 },
+	{ "WHITE_FONT_COLOR", 255, 255, 255 },
+}
 
 -- Global aliases of the Lua libraries: Blizzard_SharedXMLBase/Compat.lua's
 -- and the engine's own (API.ENGINE_LUA).
@@ -1238,6 +1313,138 @@ function Mock.RunTimers()
 	for _, timer in ipairs(timers) do timer.callback() end
 end
 
+Mock.templates = {}
+
+-- Builds the inherited templates of a comma-separated `template` list that
+-- Mock.templates knows into `frame`, in order; true when there was one.
+function Mock.ApplyTemplates(frame, template)
+	local applied = false
+	for part in (template or ""):gmatch("[^,%s]+") do
+		local build = Mock.templates[part]
+		if build then
+			build(frame)
+			applied = true
+		end
+	end
+	return applied
+end
+
+-- CreateFrame without running OnLoad: also returns whether a template from
+-- Mock.templates was built in (CreateFrame then runs OnLoad, like the client).
+function Mock.NewFrame(frameType, name, parent, template)
+	local obj = NewObject(frameType or "Frame", parent, name)
+	obj.__state.template = template
+	if template and template:find("Secure", 1, true) then obj.__state.protected = true end
+	if template and template:find(LAYOUT_ASPECT_TEMPLATE, 1, true) then obj.__state.layoutAspect = true end
+	if template and template:find("BackdropTemplate", 1, true) then obj.__state.backdropSizeScript = true end
+	if parent and parent == rawget(_G, "Minimap") then rawset(obj, "__strict", true) end
+	if frameType == "AuraContainer" then
+		assert(not InCombatLockdown(), "Native aura containers cannot be created in combat")
+		Mock.DecorateAuraContainer(obj)
+	elseif template == "ScrollingEditBoxTemplate" then
+		Mock.DecorateScrollingEditBox(obj)
+	end
+	return obj, Mock.ApplyTemplates(obj, template)
+end
+
+-- The client's bit library: LuaJIT has one, plain Lua 5.1 gets this stand-in.
+local function Bitwise(keep)
+	return function(a, b)
+		local result, place = 0, 1
+		a, b = a % 2 ^ 32, b % 2 ^ 32
+		for _ = 1, 32 do
+			if keep(a % 2, b % 2) then result = result + place end
+			a, b, place = math.floor(a / 2), math.floor(b / 2), place * 2
+		end
+		return result
+	end
+end
+Mock.BIT = {
+	band = Bitwise(function(x, y) return x == 1 and y == 1 end),
+	bor = Bitwise(function(x, y) return x == 1 or y == 1 end),
+	bxor = Bitwise(function(x, y) return x ~= y end),
+	bnot = function(a) return 2 ^ 32 - 1 - a % 2 ^ 32 end,
+	lshift = function(a, n) return (a * 2 ^ n) % 2 ^ 32 end,
+	rshift = function(a, n) return math.floor((a % 2 ^ 32) / 2 ^ n) end,
+}
+
+-- GlobalStrings.lua entries addons and their libraries read.
+Mock.GLOBAL_STRINGS = {
+	ACCEPT = "Accept", ALL = "All", BACKGROUND = "Background", CANCEL = "Cancel", CLOSE = "Close", COLOR = "Color",
+	COMMAND = "Command", CUSTOM = "Custom", FACTION = "Faction", HELP_LABEL = "Help", HIDE = "Hide", HIGH = "High",
+	HUD_EDIT_MODE_MENU = "Edit Mode", IGNORE = "Ignore", LABEL_NOTE = "Note", LOW = "Low", MUTE = "Mute",
+	MUTED = "Muted", NO = "No", NONE = "None", OKAY = "Okay", PVP = "PvP", RESET_POSITION = "Reset Position",
+	SHORT = "Short", SHOW = "Show", UKNOWNBEING = "Unknown Being", USE = "Use", YES = "Yes",
+}
+
+-- C_CreatureInfo.GetClassInfo by classID.
+local CLASSES = {
+	[1] = { "Warrior", "WARRIOR" }, [2] = { "Paladin", "PALADIN" }, [3] = { "Hunter", "HUNTER" },
+	[4] = { "Rogue", "ROGUE" }, [5] = { "Priest", "PRIEST" }, [7] = { "Shaman", "SHAMAN" },
+	[8] = { "Mage", "MAGE" }, [9] = { "Warlock", "WARLOCK" }, [11] = { "Druid", "DRUID" },
+}
+
+-- Client globals nearly every addon (and Titan Panel) reads: the logged-in
+-- player, money and zone, screen size, chat, popups, the classic dropdown
+-- menu and the menu manager. Mock.player* fields drive the player answers.
+local function InstallClientGlobals()
+	local noop = function() end
+	_G.bit = rawget(_G, "bit") or Mock.BIT
+	for name, text in pairs(Mock.GLOBAL_STRINGS) do _G[name] = text end
+	_G.date, _G.time = os.date, os.time
+	_G.issecurevariable = function() return false end
+
+	Mock.loggedIn = false
+	_G.IsLoggedIn = function() return Mock.loggedIn end
+	Mock.playerGuid = "Player-1-00000001"
+	Mock.guids = { player = Mock.playerGuid }
+	_G.UnitGUID = function(unit) return Mock.guids[unit] end
+	_G.GetPlayerInfoByGUID = function(guid)
+		if guid ~= Mock.playerGuid then return nil end
+		local className, classFile = UnitClass("player")
+		local race, raceFile = UnitRace("player")
+		return className, classFile, race, raceFile, 2, (UnitName("player")), GetRealmName()
+	end
+	_G.UnitClassBase = function(unit)
+		local _, classFile, classID = UnitClass(unit)
+		return classFile, classID
+	end
+	_G.C_CreatureInfo = {
+		GetClassInfo = function(classID)
+			local class = CLASSES[classID]
+			if class then return { className = class[1], classFile = class[2], classID = classID } end
+		end,
+	}
+	Mock.level, Mock.money, Mock.zone, Mock.subZone = 60, 0, "Stormwind City", ""
+	_G.UnitLevel = function() return Mock.level end
+	_G.GetMoney = function() return Mock.money end
+	_G.GetZoneText = function() return Mock.zone end
+	_G.GetSubZoneText = function() return Mock.subZone end
+	_G.GetBindLocation = function() return Mock.zone end
+	_G.GetAverageItemLevel = function() return 0, 0, 0 end
+	_G.RequestTimePlayed = noop
+	_G.GetScreenWidth = function() return UIParent.__state.width > 0 and UIParent.__state.width or Mock.SCREEN.width end
+	_G.GetScreenHeight = function() return UIParent.__state.height > 0 and UIParent.__state.height or Mock.SCREEN.height end
+
+	_G.StaticPopupDialogs = {}
+	_G.ChatFrame1 = NewObject("ScrollingMessageFrame", UIParent, "ChatFrame1")
+	_G.DEFAULT_CHAT_FRAME = ChatFrame1
+	_G.ChatFrameUtil = { DisplayTimePlayed = noop }
+	-- Blizzard_UIDropDownMenu: the classic dropdown, never open.
+	_G.UIDROPDOWNMENU_MAXLEVELS = 3
+	_G.UIDROPDOWNMENU_SHOW_TIME = 2
+	_G.DropDownList1 = NewObject("Button", UIParent, "DropDownList1")
+	DropDownList1.__state.shown = false
+	for _, name in ipairs({ "UIDropDownMenu_CreateFrames", "UIDropDownMenu_OnUpdate", "UIDropDownMenu_Initialize",
+		"UIDropDownMenu_AddButton", "UIDropDownMenu_AddSeparator", "UIDropDownMenu_AddSpace",
+		"ToggleDropDownMenu", "CloseDropDownMenus" }) do
+		_G[name] = noop
+	end
+	-- Blizzard_Menu: no menu is ever open.
+	local manager = { IsAnyMenuOpen = function() return false end, CloseMenus = noop }
+	_G.Menu = { GetManager = function() return manager end }
+end
+
 function Mock.Install()
 	-- Client chat belongs to the mock, not the test runner's stdout.
 	Mock.messages = {}
@@ -1269,6 +1476,9 @@ function Mock.Install()
 	Mock.aurasSecret = false
 
 	_G.LibStub = nil
+	-- Frame templates by name (XML virtual frames, or a host's Lua builders):
+	-- function(frame) building the template's content into `frame`.
+	Mock.templates = {}
 	for _, extension in ipairs(extensions) do
 		for _, name in ipairs(extension.globals or {}) do _G[name] = nil end
 	end
@@ -1277,18 +1487,8 @@ function Mock.Install()
 	_G.issecretvalue = Mock.IsSecret
 
 	_G.CreateFrame = function(frameType, name, parent, template)
-		local obj = NewObject(frameType or "Frame", parent, name)
-		obj.__state.template = template
-		if template and template:find("Secure", 1, true) then obj.__state.protected = true end
-		if template and template:find(LAYOUT_ASPECT_TEMPLATE, 1, true) then obj.__state.layoutAspect = true end
-		if template and template:find("BackdropTemplate", 1, true) then obj.__state.backdropSizeScript = true end
-		if parent and parent == rawget(_G, "Minimap") then rawset(obj, "__strict", true) end
-		if frameType == "AuraContainer" then
-			assert(not InCombatLockdown(), "Native aura containers cannot be created in combat")
-			Mock.DecorateAuraContainer(obj)
-		elseif template == "ScrollingEditBoxTemplate" then
-			Mock.DecorateScrollingEditBox(obj)
-		end
+		local obj, templated = Mock.NewFrame(frameType, name, parent, template)
+		if templated then Methods.RunScript(obj, "OnLoad") end
 		return obj
 	end
 	_G.CreateFont = function(name)
@@ -1305,10 +1505,22 @@ function Mock.Install()
 		object:SetFont([[Fonts\FRIZQT__.TTF]], font[2], "")
 		object:SetTextColor(font[3], font[4], font[5])
 	end
-	_G.NORMAL_FONT_COLOR = NewColor(1, 0.82, 0)
-	_G.HIGHLIGHT_FONT_COLOR = NewColor(1, 1, 1)
-	_G.NORMAL_FONT_COLOR_CODE = "|cffffd100"
-	_G.HIGHLIGHT_FONT_COLOR_CODE = "|cffffffff"
+	-- Blizzard_SharedXMLBase/Color.lua: every DB colour becomes <baseTag> and
+	-- <baseTag>_CODE.
+	_G.C_UIColor = {
+		GetColors = function()
+			local colors = {}
+			for i, entry in ipairs(Mock.UI_COLORS) do
+				colors[i] = { baseTag = entry[1], color = { r = entry[2] / 255, g = entry[3] / 255, b = entry[4] / 255, a = 1 } }
+			end
+			return colors
+		end,
+	}
+	for _, dbColor in ipairs(C_UIColor.GetColors()) do
+		local color = NewColor(dbColor.color.r, dbColor.color.g, dbColor.color.b, dbColor.color.a)
+		_G[dbColor.baseTag] = color
+		_G[dbColor.baseTag .. "_CODE"] = color:GenerateHexColorMarkup()
+	end
 	_G.FONT_COLOR_CODE_CLOSE = "|r"
 	_G.WorldFrame = NewObject("Frame", nil, "WorldFrame")
 	_G.UIParent = NewObject("Frame", nil, "UIParent")
@@ -1835,6 +2047,7 @@ function Mock.Install()
 		return text
 	end
 	_G.C_CVar = { SetCVar = function() return true end }
+	InstallClientGlobals()
 	RunExtensions("install")
 	Mock.EnforceAPI()
 end

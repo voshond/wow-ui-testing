@@ -18,6 +18,30 @@ local function List(value, field)
 end
 
 local SHA = "^" .. ("%x"):rep(40) .. "$"
+local SHA256 = "^" .. ("[0-9a-f]"):rep(64) .. "$"
+
+-- A git pin: { name, source = "owner/repo" or an absolute path, ref = commit SHA }.
+local function GitAddon(entry, label)
+	local remote = type(entry.source) == "string" and entry.source:match("^[%w_%-%.]+/[%w_%-%.]+$")
+	local localRepo = type(entry.source) == "string" and entry.source:sub(1, 1) == "/"
+	if not remote and not localRepo then error(label .. " source must be owner/repo or an absolute path", 0) end
+	if type(entry.ref) ~= "string" or not entry.ref:match(SHA) then
+		error(label .. " ref must be a full commit SHA", 0)
+	end
+	return { name = entry.name, source = entry.source, ref = entry.ref, toc = entry.toc }
+end
+
+-- A release zip pin: { name, url = "https://..." (or file:// for a local
+-- mirror), sha256 = the zip's lowercase hex digest }.
+local function ReleaseAddon(entry, label)
+	if type(entry.url) ~= "string" or not (entry.url:match("^https://") or entry.url:match("^file:///")) then
+		error(label .. " url must be an https:// (or file:///) URL", 0)
+	end
+	if type(entry.sha256) ~= "string" or not entry.sha256:match(SHA256) then
+		error(label .. " sha256 must be 64 lowercase hex digits", 0)
+	end
+	return { name = entry.name, url = entry.url, sha256 = entry.sha256, toc = entry.toc }
+end
 
 function Config.NormalizeAddons(raw)
 	local addons, seen = {}, {}
@@ -28,17 +52,14 @@ function Config.NormalizeAddons(raw)
 			error(label .. " needs a folder-safe name", 0)
 		end
 		if seen[entry.name] then error(label .. " repeats the name " .. entry.name, 0) end
-		local remote = type(entry.source) == "string" and entry.source:match("^[%w_%-%.]+/[%w_%-%.]+$")
-		local localRepo = type(entry.source) == "string" and entry.source:sub(1, 1) == "/"
-		if not remote and not localRepo then error(label .. " source must be owner/repo or an absolute path", 0) end
-		if type(entry.ref) ~= "string" or not entry.ref:match(SHA) then
-			error(label .. " ref must be a full commit SHA", 0)
-		end
 		if entry.toc ~= nil and (type(entry.toc) ~= "string" or not entry.toc:match("%.toc$") or entry.toc:find("%.%.")) then
 			error(label .. " toc must be a .toc path inside the addon", 0)
 		end
+		if entry.url ~= nil and entry.source ~= nil then
+			error(label .. " pins either a git source or a release url, not both", 0)
+		end
 		seen[entry.name] = true
-		addons[#addons + 1] = { name = entry.name, source = entry.source, ref = entry.ref, toc = entry.toc }
+		addons[#addons + 1] = entry.url ~= nil and ReleaseAddon(entry, label) or GitAddon(entry, label)
 	end
 	return addons
 end

@@ -61,6 +61,20 @@ describe("wowtest config", function()
 		end)
 	end)
 
+	it("validates release zips pinned by url and sha256", function()
+		local digest = ("ab"):rep(32)
+		local url = "https://cdn.example.com/getfile.php?id=1"
+		local config = Config.Normalize({ specs = "s", addons = {
+			{ name = "Titan", url = url, sha256 = digest, toc = "Titan/Titan.toc" },
+		} })
+		assert.same({ name = "Titan", url = url, sha256 = digest, toc = "Titan/Titan.toc" }, config.addons[1])
+		local function Bad(entry) return function() Config.Normalize({ specs = "s", addons = { entry } }) end end
+		assert.has_error(Bad({ name = "A", url = "http://insecure", sha256 = digest }))
+		assert.has_error(Bad({ name = "A", url = url, sha256 = digest:upper() }))
+		assert.has_error(Bad({ name = "A", url = url, sha256 = "abc" }))
+		assert.has_error(Bad({ name = "A", url = url, sha256 = digest, source = "o/r", ref = ("a"):rep(40) }))
+	end)
+
 	it("loads the fixture config from disk", function()
 		local config = Config.Load("spec/fixtures/runner/wut.config.lua")
 		assert.equals("*_check.lua", config.pattern)
