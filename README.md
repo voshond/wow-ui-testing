@@ -95,6 +95,44 @@ Mock.RunTimers()
 Regenerate a snapshot from a wow-ui-source checkout with
 `luajit scripts/api-snapshot.lua [source dir] [output]`.
 
+## Client data
+
+`clientdata/forever.json` pins everything taken from the client for one
+build: the build and interface number, the Gethe/wow-ui-source commit, the
+Gethe/wow-ui-textures art ref, and the checksums of the wago.tools
+UiTextureAtlas exports. Generated from it:
+
+- `wowmock/snapshots/forever-<build>.lua`, the API snapshot
+  (`scripts/api-snapshot.lua`)
+- `clientdata/atlases/forever-<build>.lua`, an atlas table
+  (`scripts/atlas_catalog.py`)
+
+The full atlas table is about 17k atlases and 3.3 MB, too large to commit, so
+the lib only commits the atlases wowmock and its fixtures use. Hosts keep their
+own pinned subset, generated from the names their Lua uses:
+
+```sh
+python3 -B .wut/scripts/atlas_catalog.py --fetch --scan 'MyAddon/**/*.lua' --output tests/proof/atlases.lua
+```
+
+`bash scripts/update-client-source.sh --sync` checks out the pinned
+wow-ui-source into the gitignored `.client-source/forever` (CI does this, and
+the API contract spec then regenerates the snapshot and compares it).
+
+## Bumping the client build
+
+1. `bash scripts/update-client-source.sh [commit]` (default: the newest
+   commit of the pin's branch; `ART_REF=<sha>` also repins the art). It syncs
+   `.client-source/forever`, rewrites `clientdata/forever.json`, points
+   `wowmock/api.lua` at the new snapshot, regenerates the snapshot and
+   downloads the new build's atlas exports to repin and regenerate the table.
+2. Review the snapshot diff: it is the client API change list. Fix the mock
+   where `luajit wowtest/cli.lua -j` now fails.
+3. Remove the previous build's snapshot and atlas table once no addon pins a
+   lib version that needs them.
+4. Commit, tag a new minor version, and bump `.wut-version` in each addon;
+   regenerate their atlas subsets with `--scan`.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE).

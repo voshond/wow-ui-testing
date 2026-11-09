@@ -152,7 +152,10 @@ describe("Client API contract", function()
 	it("matches a snapshot regenerated from the local Blizzard source, when present", function()
 		local source = ".client-source/forever"
 		local version = io.open(source .. "/version.txt")
-		if not version then return end
+		if not version then
+			assert.is_nil(os.getenv("WUT_REQUIRE_CLIENT_SOURCE"), source .. " is missing: run bash scripts/update-client-source.sh --sync")
+			return
+		end
 		version:close()
 		local out = os.tmpname()
 		local pipe = assert(io.popen("luajit scripts/api-snapshot.lua " .. source .. " " .. out .. " 2>&1"))

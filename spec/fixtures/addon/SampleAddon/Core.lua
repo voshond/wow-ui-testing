@@ -14,3 +14,16 @@ ns.CreateBar = function(parent)
 	bar:GetStatusBarTexture()
 	return bar
 end
+
+ns.CreateClassIcon = function(parent, classFile)
+	local icon = parent:CreateTexture(nil, "ARTWORK")
+	icon:SetSize(24, 24)
+	icon:SetAtlas("classicon-" .. classFile:lower())
+	return icon
+end
+
+ns.CreateRaidIcon = function(parent)
+	local icon = parent:CreateTexture(nil, "OVERLAY")
+	icon:SetAtlas("UI-HUD-UnitFrame-Player-PortraitOn-CornerEmbellishment")
+	return icon
+end

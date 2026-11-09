@@ -9,6 +9,8 @@
 - Run the specs from the repository root with `luajit wowtest/cli.lua -j`
   (see `luajit wowtest/cli.lua --help` for filters).
 - Generated output (`.proof/`, `.proof-art/`, `.client-source/`) is never committed.
+- Client build pins live in `clientdata/<flavor>.json`; bump them only with
+  `scripts/update-client-source.sh` (see README, Bumping the client build).
 - Consumers pin commit SHAs; tag releases with semver (`v0.1.0`) for humans and
   keep changes backwards compatible within a minor version.
 - License: PolyForm Noncommercial 1.0.0.
