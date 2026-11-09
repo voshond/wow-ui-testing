@@ -18,7 +18,7 @@ local function Render(source, dir)
 	local entry = proof:Snapshot(frame, "scene")
 	local pngs = {}
 	for _, png in ipairs({ entry.png, Raster.RawToPng(("\255\0\0\255"):rep(4), 2, 2, dir .. "/raw.png") }) do
-		pngs[#pngs + 1] = Raster.Read(png)
+		pngs[#pngs + 1] = Raster.StripPng(Raster.Read(png))
 	end
 	return Raster.Read(entry.svg), pngs
 end
