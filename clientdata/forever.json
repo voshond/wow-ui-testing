@@ -7,31 +7,31 @@
     "format": 1,
     "tables": {
       "UiTextureAtlas": {
-        "filename": "UiTextureAtlas.1.60.1.70862.csv",
+        "filename": "UiTextureAtlas.1.60.1.70888.csv",
         "rows": 2826,
         "sha256": "a53e784e29c3a42d4a991e843fa1908d15f1fc381c66ac4ecfc508c3b7d19041",
-        "url": "https://wago.tools/db2/UiTextureAtlas/csv?build=1.60.1.70862&locale=enUS"
+        "url": "https://wago.tools/db2/UiTextureAtlas/csv?build=1.60.1.70888&locale=enUS"
       },
       "UiTextureAtlasElement": {
-        "filename": "UiTextureAtlasElement.1.60.1.70862.csv",
+        "filename": "UiTextureAtlasElement.1.60.1.70888.csv",
         "rows": 20817,
         "sha256": "d5b5244ceefcde365bbdcf925104ddf848ce35554bc182b7d9e06071abc7d262",
-        "url": "https://wago.tools/db2/UiTextureAtlasElement/csv?build=1.60.1.70862&locale=enUS"
+        "url": "https://wago.tools/db2/UiTextureAtlasElement/csv?build=1.60.1.70888&locale=enUS"
       },
       "UiTextureAtlasMember": {
-        "filename": "UiTextureAtlasMember.1.60.1.70862.csv",
+        "filename": "UiTextureAtlasMember.1.60.1.70888.csv",
         "rows": 20685,
         "sha256": "000fe3517bb7600aeee97b4465e9c721accd6914dde6ba079ebe00a6e2562d6b",
-        "url": "https://wago.tools/db2/UiTextureAtlasMember/csv?build=1.60.1.70862&locale=enUS"
+        "url": "https://wago.tools/db2/UiTextureAtlasMember/csv?build=1.60.1.70888&locale=enUS"
       }
     }
   },
-  "build": "1.60.1.70862",
+  "build": "1.60.1.70888",
   "flavor": "forever",
   "interface": 16001,
   "wowUiSource": {
     "branch": "forever",
-    "commit": "9dc84f0d3bbae1768ac3405b3716000bd93eda06",
+    "commit": "4cd0ab752a77164f654ccbca9d0c1fe8dafceebe",
     "repository": "Gethe/wow-ui-source"
   }
 }

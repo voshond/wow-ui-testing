@@ -22,7 +22,7 @@ local function ModuleDir()
 	return source:match("^@(.*)/[^/]+$") or "wowmock"
 end
 
-API.DEFAULT_BUILD = "forever-1.60.1.70862"
+API.DEFAULT_BUILD = "forever-1.60.1.70888"
 API.SNAPSHOT = ModuleDir() .. "/snapshots/" .. API.DEFAULT_BUILD .. ".lua"
 
 local function Chain(base, ...)
