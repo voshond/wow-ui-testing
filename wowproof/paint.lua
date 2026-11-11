@@ -321,6 +321,10 @@ function Context:DrawTexture(region, rect, alpha)
 		copy.file = nil
 		texture = copy
 	end
+	self:PaintTexture(texture, rect, alpha)
+end
+
+function Context:PaintTexture(texture, rect, alpha)
 	local blend = texture.blend == "ADD" and ' style="mix-blend-mode:screen"' or ""
 	if texture.gradient then
 		local from, to = texture.gradient.from, texture.gradient.to
@@ -431,40 +435,199 @@ end
 
 local ANCHORS = { LEFT = "start", CENTER = "middle", RIGHT = "end" }
 
+local GLYPH_WIDTH = 0.62
+
+local function Fields(body)
+	local fields = {}
+	for field in (body .. ":"):gmatch("([^:]*):") do fields[#fields + 1] = field end
+	return fields
+end
+
+local function Positive(value)
+	value = tonumber(value)
+	if value and value > 0 then return value end
+	return nil
+end
+
+local function InlineTexture(body)
+	local fields = Fields(body)
+	if fields[1] == "" then return nil end
+	local icon = {
+		texture = { file = fields[1] },
+		height = Positive(fields[2]),
+		width = Positive(fields[3]),
+		x = tonumber(fields[4]) or 0,
+		y = tonumber(fields[5]) or 0,
+	}
+	local fileWidth, fileHeight = Positive(fields[6]), Positive(fields[7])
+	local left, right, top, bottom = tonumber(fields[8]), tonumber(fields[9]), tonumber(fields[10]), tonumber(fields[11])
+	if fileWidth and fileHeight and left and right and top and bottom then
+		icon.texture.texCoords = { left / fileWidth, right / fileWidth, top / fileHeight, bottom / fileHeight }
+	end
+	local red, green, blue = tonumber(fields[12]), tonumber(fields[13]), tonumber(fields[14])
+	if red and green and blue then icon.texture.vertexColor = { red / 255, green / 255, blue / 255, 1 } end
+	return icon
+end
+Paint.InlineTexture = InlineTexture
+
+local function InlineAtlas(body)
+	local fields = Fields((body:gsub("^:", "")))
+	if fields[1] == "" then return nil end
+	return {
+		texture = { atlas = fields[1] },
+		height = Positive(fields[2]),
+		width = Positive(fields[3]),
+		x = tonumber(fields[4]) or 0,
+		y = tonumber(fields[5]) or 0,
+	}
+end
+Paint.InlineAtlas = InlineAtlas
+
+local function HexColor(code)
+	return {
+		tonumber(code:sub(3, 4), 16) / 255,
+		tonumber(code:sub(5, 6), 16) / 255,
+		tonumber(code:sub(7, 8), 16) / 255,
+		tonumber(code:sub(1, 2), 16) / 255,
+	}
+end
+
 local function Segments(text, baseColor)
-	local segments, color, position = {}, baseColor, 1
-	text = text:gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|n", "\n")
+	local segments, color, run, position = {}, baseColor, {}, 1
+	local function Flush()
+		local joined = table.concat(run)
+		if joined ~= "" then segments[#segments + 1] = { joined, color } end
+		run = {}
+	end
+	text = text:gsub("|n", "\n")
 	while position <= #text do
-		local start, finish, code = text:find("|c(%x%x%x%x%x%x%x%x)", position)
-		local reset = text:find("|r", position, true)
-		local nextStop = math.min(start or #text + 1, reset or #text + 1)
-		if nextStop > position then segments[#segments + 1] = { text:sub(position, nextStop - 1), color } end
-		if start and start == nextStop then
-			color = {
-				tonumber(code:sub(3, 4), 16) / 255,
-				tonumber(code:sub(5, 6), 16) / 255,
-				tonumber(code:sub(7, 8), 16) / 255,
-				tonumber(code:sub(1, 2), 16) / 255,
-			}
-			position = finish + 1
-		elseif reset and reset == nextStop then
+		local stop = text:find("|[cTAr]", position) or #text + 1
+		run[#run + 1] = text:sub(position, stop - 1)
+		if stop > #text then break end
+		local code = text:match("^|c(%x%x%x%x%x%x%x%x)", stop)
+		local textureBody = text:match("^|T(.-)|t", stop)
+		local atlasBody = text:match("^|A(.-)|a", stop)
+		if code then
+			Flush()
+			color = HexColor(code)
+			position = stop + 10
+		elseif text:sub(stop, stop + 1) == "|r" then
+			Flush()
 			color = baseColor
-			position = reset + 2
+			position = stop + 2
+		elseif textureBody or atlasBody then
+			Flush()
+			local icon = textureBody and InlineTexture(textureBody) or atlasBody and InlineAtlas(atlasBody)
+			if icon then segments[#segments + 1] = { icon = icon } end
+			position = stop + (textureBody or atlasBody):len() + 4
 		else
-			position = nextStop
+			run[#run + 1] = "|"
+			position = stop + 1
 		end
 	end
+	Flush()
 	return segments
 end
 Paint.Segments = Segments
+
+local GLYPH_CLASSES = {
+	{ "[ ijlI%.,:;'!|]", 0.28 },
+	{ "[ft%(%)%[%]r]", 0.36 },
+	{ "%d", 0.56 },
+	{ "[%l%-]", 0.52 },
+	{ "[%uw]", 0.66 },
+}
+
+local function TextWidth(text, size)
+	local width = 0
+	for glyph in text:gmatch("[^\128-\191][\128-\191]*") do
+		local factor = GLYPH_WIDTH
+		for _, class in ipairs(GLYPH_CLASSES) do
+			if glyph:find("^" .. class[1] .. "$") then
+				factor = class[2]
+				break
+			end
+		end
+		width = width + factor * size
+	end
+	return width
+end
+Paint.TextWidth = TextWidth
+
+function Context:IconSize(icon, size)
+	local height = icon.height or size
+	if icon.width then return icon.width, height end
+	local image = icon.texture.atlas and self:TextureImage(icon.texture)
+	if image and image.width and image.height and image.height > 0 then return height * image.width / image.height, height end
+	return height, height
+end
+
+local function Chunks(segments)
+	local chunks, current = {}, nil
+	for _, segment in ipairs(segments) do
+		if segment.icon then
+			chunks[#chunks + 1] = { icon = segment.icon }
+			current = nil
+		else
+			if not current then
+				current = { segments = {} }
+				chunks[#chunks + 1] = current
+			end
+			current.segments[#current.segments + 1] = segment
+		end
+	end
+	return chunks
+end
+
+function Context:TextMarkup(x, y, style, anchor, spans, extra)
+	-- xml:space keeps the spaces at colour-run edges ("Thrall |r|cff..Guild Master").
+	return string.format(
+		'<text xml:space="preserve" x="%s" y="%s" font-family="%s" font-weight="%d" font-size="%s" text-anchor="%s" dominant-baseline="central"%s%s>%s</text>',
+		Number(x), Number(y), Escape(style.family or "sans-serif"), style.weight or 400, Number(style.size),
+		anchor, style.stroke, extra or "", table.concat(spans))
+end
+
+local function Spans(segments, alpha)
+	local spans = {}
+	for _, segment in ipairs(segments) do
+		spans[#spans + 1] = string.format('<tspan %s>%s</tspan>', Fill(segment[2], alpha), Escape(segment[1]))
+	end
+	return spans
+end
+
+function Context:DrawInlineText(chunks, rect, y, justify, style, alpha)
+	local size = style.size
+	local total = 0
+	for _, chunk in ipairs(chunks) do
+		if chunk.icon then
+			local width, height = self:IconSize(chunk.icon, size)
+			chunk.width, chunk.height = width, height
+			chunk.advance = width + math.max(chunk.icon.x, 0)
+		else
+			chunk.advance = 0
+			for _, segment in ipairs(chunk.segments) do chunk.advance = chunk.advance + TextWidth(segment[1], size) end
+		end
+		total = total + chunk.advance
+	end
+	local cursor = rect.left
+	if justify == "CENTER" then cursor = rect.left + (rect.width - total) / 2 elseif justify == "RIGHT" then cursor = rect.left + rect.width - total end
+	for _, chunk in ipairs(chunks) do
+		if chunk.icon then
+			local target = { left = cursor + chunk.icon.x, top = y - chunk.height / 2 - chunk.icon.y, width = chunk.width, height = chunk.height }
+			self:PaintTexture(chunk.icon.texture, target, alpha)
+		elseif chunk.advance > 0 then
+			self:Emit(self:TextMarkup(cursor, y, style, "start", Spans(chunk.segments, alpha),
+				string.format(' textLength="%s" lengthAdjust="spacing"', Number(chunk.advance))))
+		end
+		cursor = cursor + chunk.advance
+	end
+end
 
 function Context:DrawText(region, rect, alpha)
 	local text = self.adapter.Text(region)
 	if not text or text.text == nil or tostring(text.text) == "" then return end
 	local size = text.size or 12
 	local justify = text.justifyH or "CENTER"
-	local x = rect.left
-	if justify == "CENTER" then x = rect.left + rect.width / 2 elseif justify == "RIGHT" then x = rect.left + rect.width end
 	local y = rect.top + rect.height / 2
 	if text.justifyV == "TOP" then y = rect.top + size / 2 elseif text.justifyV == "BOTTOM" then y = rect.top + rect.height - size / 2 end
 	local flags = text.flags or ""
@@ -474,15 +637,18 @@ function Context:DrawText(region, rect, alpha)
 			Number(flags:find("THICK", 1, true) and size * 0.2 or size * 0.12))
 	end
 	local family, weight = self.font(text.font)
-	local spans = {}
-	for _, segment in ipairs(Segments(tostring(text.text), text.color or DEFAULT_TEXT_COLOR)) do
-		spans[#spans + 1] = string.format('<tspan %s>%s</tspan>', Fill(segment[2], alpha), Escape(segment[1]))
+	local style = { family = family, weight = weight, size = size, stroke = stroke }
+	local segments = Segments(tostring(text.text), text.color or DEFAULT_TEXT_COLOR)
+	local chunks = Chunks(segments)
+	local hasIcon = false
+	for _, chunk in ipairs(chunks) do hasIcon = hasIcon or chunk.icon ~= nil end
+	if hasIcon then
+		self:DrawInlineText(chunks, rect, y, justify, style, alpha)
+		return
 	end
-	-- xml:space keeps the spaces at colour-run edges ("Thrall |r|cff..Guild Master").
-	self:Emit(string.format(
-		'<text xml:space="preserve" x="%s" y="%s" font-family="%s" font-weight="%d" font-size="%s" text-anchor="%s" dominant-baseline="central"%s>%s</text>',
-		Number(x), Number(y), Escape(family or "sans-serif"), weight or 400, Number(size),
-		ANCHORS[justify] or "middle", stroke, table.concat(spans)))
+	local x = rect.left
+	if justify == "CENTER" then x = rect.left + rect.width / 2 elseif justify == "RIGHT" then x = rect.left + rect.width end
+	self:Emit(self:TextMarkup(x, y, style, ANCHORS[justify] or "middle", Spans(segments, alpha)))
 end
 
 function Context:DrawOutline(region, rect)
