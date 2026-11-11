@@ -125,7 +125,7 @@ Ship a pinned subset of the atlas table with the host so renders stay
 deterministic and work offline.
 
 ```lua
-local files = require("wowproof.sources.wago_casc")({ build = "1.60.1.70862", dir = ".proof-art" })
+local files = require("wowproof.sources.wago_casc")({ build = "1.60.1.70888", dir = ".proof-art" })
 assets.textures = function(path) return ownTexture(path) or art(path) or files(path) end
 assets.atlases = require("wowproof.sources.atlas_table")(pinnedAtlases)
 ```

@@ -1,5 +1,5 @@
 return {
-	build = "1.60.1.70862",
+	build = "1.60.1.70888",
 	atlases = {
 		["!Tooltip-NineSlice-EdgeLeft"] = { file = 8070610, width = 7, height = 16, left = 0.03125, right = 0.25, top = 0, bottom = 1, tilesH = false, tilesV = true },
 		["!Tooltip-NineSlice-EdgeRight"] = { file = 8070610, width = 7, height = 16, left = 0.3125, right = 0.53125, top = 0, bottom = 1, tilesH = false, tilesV = true },
