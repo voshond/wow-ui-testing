@@ -157,7 +157,8 @@ function Raster.PngSize(png)
 end
 
 local PNG_SIG = "\137PNG\r\n\26\n"
-local PNG_CRITICAL = { IHDR = true, PLTE = true, IDAT = true, IEND = true }
+-- tRNS is ancillary but holds an indexed PNG's alpha; dropping it makes the image opaque.
+local PNG_KEEP = { IHDR = true, PLTE = true, tRNS = true, IDAT = true, IEND = true }
 
 function Raster.StripPng(data)
 	if not data or #data < 8 or data:sub(1, 8) ~= PNG_SIG then return data end
@@ -166,7 +167,7 @@ function Raster.StripPng(data)
 	while pos + 11 <= #data do
 		local len = UInt32(data, pos)
 		local typ = data:sub(pos + 4, pos + 7)
-		if PNG_CRITICAL[typ] then out[#out + 1] = data:sub(pos, pos + 11 + len) end
+		if PNG_KEEP[typ] then out[#out + 1] = data:sub(pos, pos + 11 + len) end
 		pos = pos + 12 + len
 	end
 	return table.concat(out)
