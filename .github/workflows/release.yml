@@ -1,0 +1,54 @@
+name: Release
+
+# Tags the next patch release once the test suite passes on main and the
+# library changed since the newest tag, so the addons' Upstream workflows can
+# propose the new version in .wut-version. Docs and CI changes alone release
+# nothing; a tag pushed by hand on the commit (a minor or major version) wins.
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag the next patch release
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Release the library changes since the newest tag
+        run: |
+          latest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
+          if [ -z "$latest" ]; then
+            echo "::error::No release tags to continue from."
+            exit 1
+          fi
+          if [ -n "$(git tag --points-at "$SHA" -l 'v*')" ]; then
+            echo "$SHA is already tagged."
+            exit 0
+          fi
+          if [ -z "$(git diff --name-only "$latest" "$SHA" -- clientdata scripts wowmock wowproof wowtest wut.config.lua)" ]; then
+            echo "No library changes since $latest."
+            exit 0
+          fi
+          IFS=. read -r major minor patch <<<"${latest#v}"
+          next="v$major.$minor.$((patch + 1))"
+          gh release create "$next" --target "$SHA" --title "$next" --generate-notes --notes-start-tag "$latest"
+          printf 'Released `%s` at `%s` (after `%s`).\n' "$next" "${SHA:0:7}" "$latest" >> "$GITHUB_STEP_SUMMARY"

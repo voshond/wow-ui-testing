@@ -196,8 +196,11 @@ the API contract spec then regenerates the snapshot and compares it).
    where `luajit wowtest/cli.lua -j` now fails.
 3. Remove the previous build's snapshot and atlas table once no addon pins a
    lib version that needs them.
-4. Commit, tag a new minor version, and bump `.wut-version` in each addon;
-   regenerate their atlas subsets with `--scan`.
+4. Commit and merge. Once the tests pass on `main`, the Release workflow tags
+   the next patch version (tag a minor or major version by hand on the commit
+   instead when it breaks compatibility). Each addon's Upstream workflow then
+   proposes the bump of its `.wut-version`; regenerate their atlas subsets with
+   `--scan` where needed.
 
 ## License
 

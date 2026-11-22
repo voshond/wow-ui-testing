@@ -83,5 +83,5 @@ jobs:
           - Pins \`clientdata/$FLAVOR.json\` to $REPOSITORY \`$LATEST\` ($FLAVOR $build, was $old_build).
           - Regenerates the API snapshot and the atlas table for that build.
 
-          Review the snapshot diff for changed or removed APIs. When the build changed, remove the old snapshot and atlas table once nothing uses them. After merging, tag a release so addons can bump \`.wut-version\`."
+          Review the snapshot diff for changed or removed APIs. When the build changed, remove the old snapshot and atlas table once nothing uses them. After merging, the Release workflow tags the next patch version and the addons propose their \`.wut-version\` bumps."
           fi
